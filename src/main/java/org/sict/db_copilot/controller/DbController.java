@@ -1,6 +1,6 @@
-package org.sict.db_copliot.controller;
+package org.sict.db_copilot.controller;
 
-import org.sict.db_copliot.service.DbService;
+import org.sict.db_copilot.service.DbService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 

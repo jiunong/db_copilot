@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.sict.db_copliot.demos.web;
+package org.sict.db_copilot.demos.web;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;

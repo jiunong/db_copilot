@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.sict.db_copliot.demos.web;
+package org.sict.db_copilot.demos.web;
 
 /**
  * @author <a href="mailto:chenxilzx1@gmail.com">theonefx</a>

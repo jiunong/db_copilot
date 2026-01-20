@@ -1,4 +1,4 @@
-package org.sict.db_copliot;
+package org.sict.db_copilot;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

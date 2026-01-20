@@ -1,4 +1,4 @@
-package org.sict.db_copliot.config;
+package org.sict.db_copilot.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;

@@ -1,6 +1,6 @@
-package org.sict.db_copliot.service;
+package org.sict.db_copilot.service;
 
-import org.sict.db_copliot.config.MultiDbProperties;
+import org.sict.db_copilot.config.MultiDbProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,7 +11,6 @@ import javax.sql.DataSource;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;

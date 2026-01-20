@@ -3,7 +3,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.sict</groupId>
-    <artifactId>db_copliot</artifactId>
+    <artifactId>db_copilot</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>db_copliot</name>
     <description>db_copliot</description>
@@ -75,7 +75,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
                 <configuration>
-                    <mainClass>org.sict.db_copliot.DbCopliotApplication</mainClass>
+                    <mainClass>org.sict.db_copilot.DbCopliotApplication</mainClass>
                     <skip>true</skip>
                 </configuration>
                 <executions>
