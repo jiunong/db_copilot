@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Web 数据库管理</title>
+    <!-- Vue 2 -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.14/vue.min.js"></script>
+    <!-- Axios -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/axios/0.26.0/axios.min.js"></script>
+    <!-- Element UI -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-ui/2.15.13/theme-chalk/index.min.css">
+    <script src="https://cdn.bootcdn.net/ajax/libs/element-ui/2.15.13/index.min.js"></script>
+    
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+        #app { height: 100%; display: flex; flex-direction: column; }
+        .header { background: #333; color: white; padding: 10px 20px; font-size: 1.2rem; display: flex; align-items: center; justify-content: space-between; }
+        .main-container { flex: 1; display: flex; overflow: hidden; }
+        
+        /* Start Screen */
+        .start-screen {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f0f2f5;
+        }
+        .db-card {
+            width: 400px;
+        }
+        .db-item {
+            cursor: pointer;
+            padding: 10px;
+            border-bottom: 1px solid #ebeef5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .db-item:hover {
+            background-color: #f5f7fa;
+        }
+        .db-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Sidebar */
+        .sidebar { flex-shrink: 0; background: #f5f5f5; border-right: 1px solid #ddd; display: flex; flex-direction: column; overflow: hidden; }
+        .resizer { width: 5px; cursor: col-resize; background: #eee; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; transition: background 0.2s; flex-shrink: 0; }
+        .resizer:hover, .resizer.resizing { background: #409EFF; }
+        
+        .schema-select { padding: 10px; border-bottom: 1px solid #e0e0e0; }
+        .table-list { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
+        .table-list li { padding: 8px 15px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .table-list li:hover { background: #e6f7ff; color: #1890ff; }
+        .table-list li.active { background: #1890ff; color: white; }
+        .table-name { font-weight: 500; }
+        .table-comment { font-size: 0.8em; color: #888; margin-left: 5px; }
+        .table-list li.active .table-comment { color: #eee; }
+
+        /* Content */
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 10px; background: white; }
+        .tabs { margin-bottom: 10px; border-bottom: 2px solid #ddd; }
+        .tabs button { background: none; border: none; padding: 10px 20px; font-size: 1rem; cursor: pointer; outline: none; }
+        .tabs button.active { border-bottom: 2px solid #1890ff; color: #1890ff; font-weight: bold; margin-bottom: -2px; }
+        
+        .tab-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        .sql-editor-container { display: flex; flex-direction: column; height: 100%; }
+        .sql-input { height: 150px; margin-bottom: 10px; }
+        .result-area { flex: 1; overflow: auto; }
+
+        .pagination { margin-top: 10px; text-align: right; }
+    </style>
+</head>
+<body>
+<div id="app">
+    
+    <!-- DB Selection Screen -->
+    <div v-if="!currentDbId" class="start-screen">
+        <el-card class="db-card" shadow="hover">
+            <div slot="header" class="clearfix">
+                <span>选择数据库</span>
+            </div>
+            <div v-if="loadingDbs" style="text-align: center; padding: 20px;">
+                <i class="el-icon-loading"></i>此处 正在加载配置...
+            </div>
+            <div v-else-if="dbList.length === 0" style="text-align: center; padding: 20px; color: #999;">
+                未配置数据库.
+            </div>
+            <div v-else>
+                <div v-for="db in dbList" :key="db.id" class="db-item" @click="selectDb(db)">
+                    <span style="font-weight: bold;">
+                        {{ db.name }}
+                        <!-- Connection Status Indicators -->
+                        <i v-if="db.status === 'checking'" class="el-icon-loading" style="color: #909399; margin-left: 5px; font-size: 0.8em;"></i>
+                        <el-tooltip v-else-if="db.status === 'UP'" content="连接正常" placement="right">
+                            <i class="el-icon-circle-check" style="color: #67C23A; margin-left: 5px;"></i>
+                        </el-tooltip>
+                        <el-tooltip v-else-if="db.status === 'DOWN'" content="连接失败 (超时或错误)" placement="right">
+                            <i class="el-icon-circle-close" style="color: #F56C6C; margin-left: 5px;"></i>
+                        </el-tooltip>
+                    </span>
+                    <el-tag size="mini" type="info">{{ db.id }}</el-tag>
+                </div>
+            </div>
+        </el-card>
+    </div>
+
+    <!-- Main Application -->
+    <template v-else>
+        <div class="header">
+            <span>Oracle Web 数据库管理 <small style="font-size: 0.8rem; margin-left: 10px; opacity: 0.8;">({{ currentDbName }})</small></span>
+            <el-button type="text" style="color: white; font-size: 0.9rem;" icon="el-icon-switch-button" @click="switchDb">切换数据库</el-button>
+        </div>
+        <div class="main-container">
+            <!-- Sidebar -->
+            <div class="sidebar" :style="{ width: sidebarWidth + 'px' }">
+                <div class="schema-select">
+                    <el-select v-model="currentSchema" placeholder="选择 Schema" filterable @change="loadTables" size="small" style="width: 100%;">
+                        <el-option v-for="s in schemas" :key="s.USERNAME || s.username" :label="s.USERNAME || s.username" :value="s.USERNAME || s.username"></el-option>
+                    </el-select>
+                    <el-input v-model="tableFilter" placeholder="筛选表名/备注..." size="small" clearable style="margin-top: 5px;"></el-input>
+                </div>
+                <!-- <div v-if="loadingTables" style="padding: 20px; text-align: center; color: #999;">Loading tables...</div> -->
+                <!-- Use Element Loading directive instead for better UX on sidebar? or keep simple -->
+                <div v-if="loadingTables" style="display:flex; justify-content:center; padding:10px;"><i class="el-icon-loading"></i></div>
+                <ul class="table-list" v-else>
+                    <li v-for="t in filteredTables" :key="t.TABLE_NAME || t.table_name" :class="{active: currentTable === (t.TABLE_NAME || t.table_name)}" @click="selectTable(t)">
+                        <span class="table-name">{{ t.TABLE_NAME || t.table_name }}</span>
+                        <!-- Handle case sensitivity in property names returned by map -->
+                        <span class="table-comment" v-if="t.COMMENTS || t.comments">{{ t.COMMENTS || t.comments }}</span>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="resizer" @mousedown="startResize" :class="{ resizing: isResizing }"></div>
+
+            <!-- Main Content -->
+            <div class="content">
+                <div class="tabs">
+                    <button :class="{active: activeTab === 'data'}" @click="activeTab = 'data'">数据</button>
+                    <button :class="{active: activeTab === 'structure'}" @click="activeTab = 'structure'">结构</button>
+                    <button :class="{active: activeTab === 'sql'}" @click="activeTab = 'sql'">SQL编辑器</button>
+                </div>
+
+                <!-- Data Tab -->
+                <div class="tab-pane" v-if="activeTab === 'data'">
+                    <div v-if="!currentTable" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看数据</div>
+                    <template v-else>
+                    <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 10px;">
+                        <h3 style="margin:0;">
+                            数据: {{ currentSchema }}.{{ currentTable }}
+                        </h3>
+                        <div>
+                             <el-button v-if="!isEditing" type="primary" size="small" icon="el-icon-edit" @click="toggleEdit(true)">解锁编辑</el-button>
+                             <template v-else>
+                                 <el-button type="success" size="small" icon="el-icon-check" @click="saveData" :loading="savingData">保存修改</el-button>
+                                 <el-button size="small" icon="el-icon-close" @click="toggleEdit(false)">取消</el-button>
+                                 <span style="margin-left: 10px; color: #E6A23C; font-size: 0.9em;"><i class="el-icon-warning"></i> 编辑模式</span>
+                             </template>
+                        </div>
+                    </div>
+                    
+                    <div v-if="currentTableObj" style="margin-bottom: 10px;">
+                        <el-input 
+                            v-model="currentTableObj.COMMENTS" 
+                            size="mini" 
+                            placeholder="Edit table comment..." 
+                            style="width: 100%;"
+                            @focus="focusComment(currentTableObj)" 
+                            @blur="updateTableComment(currentTableObj)">
+                            <template slot="prepend">Table Comment</template>
+                        </el-input>
+                    </div>
+                    <el-table :data="tableData" border height="100%" v-loading="loadingData" size="small" stripe>
+                         <el-table-column v-for="(val, key) in (tableData[0] || {})" :key="key" :prop="key" min-width="150" show-overflow-tooltip v-if="key !== '_ROWID_' && key !== 'RNUM' && key !== 'rnum'">
+                            <template slot="header" slot-scope="scope">
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <span>{{ key }}</span>
+                                    <el-dropdown v-if="isEditing" trigger="click" @command="handleBatchCommand">
+                                        <span class="el-dropdown-link" style="cursor: pointer; color: #409EFF; padding: 2px;">
+                                            <i class="el-icon-finished"></i>
+                                        </span>
+                                        <el-dropdown-menu slot="dropdown">
+                                            <el-dropdown-item :command="{type: 'dialog', col: key}">批量修改...</el-dropdown-item>
+                                            <el-dropdown-item :command="{type: 'shuffle', col: key}">打乱顺序 (当前页)</el-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </el-dropdown>
+                                </div>
+                                <span style="display:block; font-size: 11px; color: #909399; font-weight: normal;" v-if="getColumnComment(key)">{{ getColumnComment(key) }}</span>
+                            </template>
+                             <template slot-scope="scope">
+                                <div v-if="isEditing">
+                                     <span v-if="isDateColumn(key)" style="color: #999; font-size: 0.9em; font-style: italic;" title="日期类型只读">
+                                         <i class="el-icon-lock"></i> {{ scope.row[key] }}
+                                     </span>
+                                     <el-input v-else size="mini" v-model="scope.row[key]"></el-input>
+                                </div>
+                                <span v-else>{{ scope.row[key] }}</span>
+                            </template>
+                         </el-table-column>
+                    </el-table>
+                        <div class="pagination">
+                            <el-pagination
+                                @current-change="handlePageChange"
+                                :current-page="page"
+                                :page-size="size"
+                                :total="total"
+                                layout="total, prev, pager, next, jumper">
+                            </el-pagination>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Structure Tab -->
+                <div class="tab-pane" v-if="activeTab === 'structure'">
+                    <div v-if="!currentTable" style="margin-top: 50px; text-align: center; color: #ccc;">Select a table to view structure</div>
+                     <template v-else>
+                         <h3>Structure: {{ currentSchema }}.{{ currentTable }}</h3>
+                         <el-table :data="tableColumns" border height="100%" v-loading="loadingColumns" size="small" stripe>
+                            <el-table-column prop="COLUMN_NAME" label="列名" width="180"></el-table-column>
+                            <el-table-column prop="DATA_TYPE" label="类型" width="120"></el-table-column>
+                            <el-table-column prop="DATA_LENGTH" label="长度" width="80"></el-table-column>
+                            <el-table-column prop="NULLABLE" label="可空" width="80"></el-table-column>
+                            <el-table-column label="备注">
+                                <template slot-scope="scope">
+                                    <el-input 
+                                        v-model="scope.row.COMMENTS" 
+                                        class="comment-input" 
+                                        size="mini" 
+                                        placeholder="添加备注..." 
+                                        @focus="focusComment(scope.row)" 
+                                        @blur="updateColumnComment(scope.row)">
+                                    </el-input>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                     </template>
+                </div>
+                
+                <!-- SQL Editor Tab -->
+                <div class="tab-pane" v-if="activeTab === 'sql'">
+                    <div class="sql-editor-container">
+                        <el-input
+                          type="textarea"
+                          :rows="6"
+                          placeholder="请输入 SQL"
+                          v-model="sqlInput"
+                          class="sql-input">
+                        </el-input>
+                        <div style="text-align: right; margin-bottom: 10px;">
+                            <el-button type="primary" size="small" @click="executeSql" :loading="executingSql">执行</el-button>
+                        </div>
+                        <div class="result-area">
+                            <div v-if="sqlError" style="color: red; padding: 10px; border: 1px solid #ffcccc; background: #fff5f5;">
+                                {{ sqlError }}
+                            </div>
+                            <el-table v-if="sqlResult && sqlResult.length > 0" :data="sqlResult" border height="100%" size="small" stripe>
+                                <el-table-column v-for="(val, key) in sqlResult[0]" :key="key" :prop="key" min-width="120" show-overflow-tooltip></el-table-column>
+                            </el-table>
+                            <div v-else-if="sqlResult" style="padding: 20px; color: #666;">
+                                无数据或结果集为空。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </template>
+
+    
+    <el-dialog title="批量修改规则" :visible.sync="batchDialogVisible" width="500px" append-to-body>
+        <el-form :model="batchConfig" label-width="120px" size="small">
+            <el-form-item label="目标列">
+                <strong>{{ batchConfig.columnName }}</strong>
+            </el-form-item>
+            <el-form-item label="操作范围">
+                <el-radio-group v-model="batchConfig.applyAll">
+                    <el-radio :label="false">仅当前页 (需保存)</el-radio>
+                    <el-radio :label="true">全表数据 (立即执行)</el-radio>
+                </el-radio-group>
+            </el-form-item>
+            <el-form-item label="规则类型">
+                <el-select v-model="batchConfig.type" style="width: 100%;">
+                    <el-option label="固定值" value="fixed"></el-option>
+                    <el-option label="随机字符串" value="randomStr"></el-option>
+                    <el-option label="随机中文" value="randomCn"></el-option>
+                    <el-option label="随机整数" value="randomInt"></el-option>
+                    <el-option label="随机两位小数" value="randomDecimal"></el-option>
+                    <el-option label="置空 (Null)" value="null"></el-option>
+                    <el-option label="数值加 (+)" value="add"></el-option>
+                    <el-option label="数值减 (-)" value="sub"></el-option>
+                    <el-option label="数值乘 (*)" value="mul"></el-option>
+                    <el-option label="部分脱敏 (掩码)" value="mask"></el-option>
+                </el-select>
+            </el-form-item>
+            <el-form-item label="值" v-if="batchConfig.type === 'fixed'">
+                <el-input v-model="batchConfig.value"></el-input>
+            </el-form-item>
+            <el-form-item label="脱敏规则" v-if="batchConfig.type === 'mask'">
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <el-tooltip content="保留前几位" placement="top">
+                        <el-input-number v-model="batchConfig.keepStart" :min="0" :max="50" size="mini" controls-position="right"></el-input-number>
+                    </el-tooltip>
+                    <span>****</span>
+                    <el-tooltip content="保留后几位" placement="top">
+                        <el-input-number v-model="batchConfig.keepEnd" :min="0" :max="50" size="mini" controls-position="right"></el-input-number>
+                    </el-tooltip>
+                </div>
+                <div style="margin-top:5px; display:flex; align-items:center;">
+                    <span style="font-size:12px; color:#666; width: 60px;">掩码符:</span>
+                    <el-input v-model="batchConfig.maskChar" size="mini" style="width:50px; text-align:center;"></el-input>
+                </div>
+            </el-form-item>
+             <el-form-item label="运算数" v-if="['add','sub','mul'].includes(batchConfig.type)">
+                <el-input-number v-model="batchConfig.numValue" style="width: 100%;"></el-input-number>
+            </el-form-item>
+            <el-form-item label="长度" v-if="batchConfig.type === 'randomStr' || batchConfig.type === 'randomCn'">
+                <el-input-number v-model="batchConfig.length" :min="1" :max="50"></el-input-number>
+            </el-form-item>
+            <el-form-item label="范围 (小-大)" v-if="batchConfig.type === 'randomInt' || batchConfig.type === 'randomDecimal'">
+                 <div style="display: flex; gap: 5px;">
+                    <el-input-number v-model="batchConfig.min" style="width: 100px;" :controls="false" placeholder="Min"></el-input-number>
+                    <span>-</span>
+                    <el-input-number v-model="batchConfig.max" style="width: 100px;" :controls="false" placeholder="Max"></el-input-number>
+                </div>
+            </el-form-item>
+        </el-form>
+        <div slot="footer" class="dialog-footer">
+            <el-button @click="batchDialogVisible = false" size="small" :disabled="updatingBatch">取消</el-button>
+            <el-button type="primary" @click="applyBatch" size="small" :loading="updatingBatch">{{ batchConfig.applyAll ? '立即执行更新' : '应用到当前页' }}</el-button>
+        </div>
+    </el-dialog>
+</div>
+
+<script>
+    new Vue({
+        el: '#app',
+        data: {
+            loadingDbs: false,
+            dbList: [],
+            currentDbId: null,
+            currentDbName: '',
+            
+            schemas: [],
+            currentSchema: '',
+            tables: [],
+            currentTable: '',
+            currentTableObj: null,
+            loadingTables: false,
+            tableFilter: '',
+            
+            activeTab: 'data',
+            
+            tableData: [],
+            total: 0,
+            page: 1,
+            size: 15,
+            loadingData: false,
+            
+            tableColumns: [],
+            loadingColumns: false,
+            
+            sqlInput: '',
+            sqlResult: null,
+            sqlError: null,
+            executingSql: false,
+
+            originalComment: '', // For tracking changes
+            
+            // Edit Mode
+            isEditing: false,
+            savingData: false,
+            
+            // Meta info
+            columnTypeMap: {}, // key -> dataType (upper case)
+
+            // Batch Data
+            batchDialogVisible: false,
+            batchConfig: {
+                columnName: '',
+                type: 'fixed',
+                value: '',
+                numValue: 0,
+                length: 8,
+                min: 0,
+                max: 100,
+                applyAll: false,
+                keepStart: 2,
+                keepEnd: 2,
+                maskChar: '*'
+            },
+            updatingBatch: false,
+            
+            // Sidebar Resize
+            sidebarWidth: 250,
+            isResizing: false
+        },
+        mounted() {
+            this.fetchDbList();
+        },
+        computed: {
+            filteredTables() {
+                if (!this.tableFilter) return this.tables;
+                const lowerFilter = this.tableFilter.toLowerCase();
+                return this.tables.filter(t => {
+                    const name = (t.TABLE_NAME || t.table_name || '').toLowerCase();
+                    const comment = (t.COMMENTS || t.comments || '').toLowerCase();
+                    return name.includes(lowerFilter) || comment.includes(lowerFilter);
+                });
+            }
+        },
+        methods: {
+            fetchDbList() {
+                this.loadingDbs = true;
+                axios.get('/api/db/list').then(res => {
+                    this.dbList = res.data.map(db => ({ ...db, status: 'checking' }));
+                    this.checkAllDbStatus(); // Start checking
+                    // Optional: if only one DB, auto select?
+                    // if (this.dbList.length === 1) {
+                    //     this.selectDb(this.dbList[0]);
+                    // }
+                }).catch(err => {
+                    this.$message.error('加载数据库列表失败');
+                    console.error(err);
+                }).finally(() => {
+                    this.loadingDbs = false;
+                });
+            },
+            checkAllDbStatus() {
+                this.dbList.forEach(db => {
+                    axios.get(`/api/db/${db.id}/status`)
+                        .then(res => {
+                            db.status = res.data.status;
+                        })
+                        .catch(() => {
+                            db.status = 'DOWN';
+                        });
+                });
+            },
+            selectDb(db) {
+                this.currentDbId = db.id;
+                this.currentDbName = db.name;
+                this.loadSchemas();
+            },
+            switchDb() {
+                this.currentDbId = null;
+                this.currentDbName = '';
+                this.schemas = [];
+                this.currentSchema = '';
+                this.tables = [];
+                this.currentTable = '';
+                this.tableData = [];
+                this.sqlResult = null;
+                this.fetchDbList(); // Refresh list
+            },
+            loadSchemas() {
+                axios.get(`/api/db/${this.currentDbId}/schemas`).then(res => {
+                    this.schemas = res.data;
+                });
+            },
+            loadTables() {
+                this.loadingTables = true;
+                this.currentTable = '';
+                this.tableData = [];
+                axios.get(`/api/db/${this.currentDbId}/tables/${this.currentSchema}`).then(res => {
+                    this.tables = res.data;
+                }).finally(() => {
+                    this.loadingTables = false;
+                });
+            },
+            selectTable(t) {
+                this.currentTable = t.TABLE_NAME || t.table_name; // support upper/lower keys
+                this.currentTableObj = t;
+                this.page = 1;
+                this.loadTableData();
+                this.loadTableColumns(); // preload structure
+            },
+            loadTableData() {
+                if (!this.currentTable) return;
+                this.loadingData = true;
+                axios.get(`/api/db/${this.currentDbId}/data/${this.currentSchema}/${this.currentTable}`, {
+                    params: { page: this.page, size: this.size }
+                }).then(res => {
+                    this.tableData = res.data.data;
+                    this.total = res.data.total;
+                }).finally(() => {
+                    this.loadingData = false;
+                });
+            },
+            loadTableColumns() {
+                this.loadingColumns = true;
+                axios.get(`/api/db/${this.currentDbId}/columns/${this.currentSchema}/${this.currentTable}`).then(res => {
+                    this.tableColumns = res.data;
+                    // Build type map
+                    this.columnTypeMap = {};
+                    if (this.tableColumns) {
+                        this.tableColumns.forEach(c => {
+                            const name = c.COLUMN_NAME || c.column_name;
+                            const type = c.DATA_TYPE || c.data_type;
+                            if (name && type) {
+                                this.columnTypeMap[name] = type.toUpperCase();
+                            }
+                        });
+                    }
+                }).finally(() => {
+                    this.loadingColumns = false;
+                });
+            },
+            handlePageChange(val) {
+                this.page = val;
+                this.loadTableData();
+            },
+            getColumnComment(colName) {
+                if (!this.tableColumns) return '';
+                // Need to handle key sensitivity
+                const col = this.tableColumns.find(c => (c.COLUMN_NAME || c.column_name) === colName);
+                return col ? (col.COMMENTS || col.comments) : '';
+            },
+            isDateColumn(colName) {
+                const type = this.columnTypeMap[colName];
+                return type && (type.includes('DATE') || type.includes('TIMESTAMP'));
+            },
+            executeSql() {
+               if(!this.sqlInput) return;
+               this.executingSql = true;
+               this.sqlError = null;
+               this.sqlResult = null;
+               
+               axios.post(`/api/db/${this.currentDbId}/execute`, { sql: this.sqlInput })
+                   .then(res => {
+                       if (res.data.error) {
+                           this.sqlError = res.data.error;
+                       } else {
+                           this.sqlResult = res.data;
+                       }
+                   })
+                   .catch(err => {
+                       this.sqlError = err.message;
+                   })
+                   .finally(() => {
+                       this.executingSql = false;
+                   });
+            },
+            // Comment editing
+            focusComment(row) {
+                 this.originalComment = row.COMMENTS || row.comments;
+            },
+            updateTableComment(table) {
+                const newComment = table.COMMENTS || table.comments;
+                if (newComment !== this.originalComment) {
+                     axios.post(`/api/db/${this.currentDbId}/comment/table`, {
+                         schema: this.currentSchema,
+                         tableName: table.TABLE_NAME || table.table_name,
+                         comment: newComment
+                     }).then(() => {
+                         this.$message.success('表备注已更新');
+                         this.originalComment = newComment;
+                     });
+                }
+            },
+            updateColumnComment(column) {
+                const newComment = column.COMMENTS || column.comments;
+                if (newComment !== this.originalComment) {
+                    axios.post(`/api/db/${this.currentDbId}/comment/column`, {
+                        schema: this.currentSchema,
+                        tableName: this.currentTable,
+                        columnName: column.COLUMN_NAME || column.column_name,
+                        comment: newComment
+                    }).then(() => {
+                        this.$message.success('列备注已更新');
+                         this.originalComment = newComment;
+                    });
+                }
+            },
+            toggleEdit(val) {
+                this.isEditing = val;
+                // If canceling, maybe reload data to discard changes?
+                if (!val) {
+                    this.loadTableData();
+                }
+            },
+            saveData() {
+                const updates = this.tableData.filter(row => row._ROWID_ || row['_ROWID_']).map(row => {
+                     // Filter out internal keys like _ROWID_ and RNUM from creating the UPDATE statement data
+                     const rowData = {};
+                     const rid = row._ROWID_ || row['_ROWID_'];
+                     Object.keys(row).forEach(k => {
+                         if (k !== '_ROWID_' && k !== '_ROWID_' && k !== 'RNUM' && k !== 'rnum') {
+                             // Skip date columns to avoid ORA-01861 error on update
+                             if (!this.isDateColumn(k)) {
+                                 rowData[k] = row[k];
+                             }
+                         }
+                     });
+                     return { _ROWID_: rid, data: rowData };
+                });
+                
+                if (updates.length === 0) {
+                     this.$message.warning("没有需要保存的数据.");
+                     return;
+                }
+
+                this.savingData = true;
+                axios.post(`/api/db/${this.currentDbId}/data/update`, {
+                    schema: this.currentSchema,
+                    tableName: this.currentTable,
+                    updates: updates
+                }).then(res => {
+                    this.$message.success("保存成功");
+                    this.isEditing = false;
+                    this.loadTableData(); // Reload to refresh state
+                }).catch(err => {
+                    this.$message.error("保存失败，请检查数据格式或后端日志.");
+                    console.error(err);
+                }).finally(() => {
+                    this.savingData = false;
+                });
+            },
+            handleBatchCommand(cmd) {
+                if (cmd.type === 'dialog') {
+                    this.batchConfig.columnName = cmd.col;
+                    this.batchConfig.type = 'fixed';
+                    this.batchConfig.value = '';
+                    this.batchDialogVisible = true;
+                } else if (cmd.type === 'shuffle') {
+                    this.shuffleColumn(cmd.col);
+                }
+            },
+            shuffleColumn(col) {
+                 // Fisher-Yates Shuffle
+                 let values = this.tableData.map(r => r[col]);
+                 for (let i = values.length - 1; i > 0; i--) {
+                     const j = Math.floor(Math.random() * (i + 1));
+                     [values[i], values[j]] = [values[j], values[i]];
+                 }
+                 this.tableData.forEach((row, idx) => {
+                     this.$set(row, col, values[idx]);
+                 });
+            },
+            applyBatch() {
+                const col = this.batchConfig.columnName;
+                const type = this.batchConfig.type;
+                
+                if (this.batchConfig.applyAll) {
+                    // Server side update
+                    this.$confirm(`确定要更新全表数据吗? 此操作不可撤销.`, '警告', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        const payload = {
+                            schema: this.currentSchema,
+                            tableName: this.currentTable,
+                            columnName: col,
+                            type: type,
+                            value: this.batchConfig.value,
+                            numValue: this.batchConfig.numValue,
+                            length: this.batchConfig.length,
+                            min: this.batchConfig.min,
+                            max: this.batchConfig.max,
+                            keepStart: this.batchConfig.keepStart,
+                            keepEnd: this.batchConfig.keepEnd,
+                            maskChar: this.batchConfig.maskChar
+                        };
+                        this.updatingBatch = true;
+                        axios.post(`/api/db/${this.currentDbId}/data/batch-update`, payload).then(() => {
+                            this.$message.success("全表更新成功");
+                            this.batchDialogVisible = false;
+                            this.loadTableData();
+                        }).catch(err => {
+                            this.$message.error("更新失败: " + (err.response ? err.response.data : err.message));
+                        }).finally(() => {
+                            this.updatingBatch = false;
+                        });
+                    }).catch(() => {});
+                    return;
+                }
+
+                this.tableData.forEach(row => {
+                    let distinctVal = null;
+                    
+                    if (type === 'fixed') {
+                        distinctVal = this.batchConfig.value;
+                        this.$set(row, col, distinctVal);
+                    } else if (type === 'null') {
+                        distinctVal = null;
+                        this.$set(row, col, distinctVal);
+                    } else if (type === 'randomStr') {
+                        const len = this.batchConfig.length;
+                        distinctVal = Math.random().toString(36).substring(2, 2 + len);
+                        this.$set(row, col, distinctVal);
+                    } else if (type === 'randomCn') {
+                        const len = this.batchConfig.length;
+                        // Generate random chinese chars
+                        let str = '';
+                        for(let i=0; i<len; i++) {
+                             // Unicode range for common CJK: 4E00 - 9FA5
+                             const code = Math.floor(Math.random() * (0x9FA5 - 0x4E00 + 1)) + 0x4E00;
+                             str += String.fromCharCode(code);
+                        }
+                        this.$set(row, col, str);
+                    } else if (type === 'randomInt') {
+                        const min = parseInt(this.batchConfig.min);
+                        const max = parseInt(this.batchConfig.max);
+                        distinctVal = Math.floor(Math.random() * (max - min + 1)) + min;
+                        this.$set(row, col, distinctVal);
+                    } else if (type === 'randomDecimal') {
+                        const min = parseFloat(this.batchConfig.min);
+                        const max = parseFloat(this.batchConfig.max);
+                        // Generate random decimal with 2 decimal places
+                        distinctVal = (Math.random() * (max - min) + min).toFixed(2);
+                        this.$set(row, col, distinctVal);
+                    } else if (type === 'add') {
+                         let original = parseFloat(row[col]);
+                         if (isNaN(original)) original = 0;
+                         this.$set(row, col, original + this.batchConfig.numValue);
+                    } else if (type === 'sub') {
+                         let original = parseFloat(row[col]);
+                         if (isNaN(original)) original = 0;
+                         this.$set(row, col, original - this.batchConfig.numValue);
+                    } else if (type === 'mul') {
+                         let original = parseFloat(row[col]);
+                         if (isNaN(original)) original = 0;
+                         this.$set(row, col, original * this.batchConfig.numValue);
+                    } else if (type === 'mask') {
+                         let val = row[col];
+                         if (val) {
+                             val = String(val); // Ensure string
+                             const len = val.length;
+                             const s = this.batchConfig.keepStart;
+                             const e = this.batchConfig.keepEnd;
+                             const c = this.batchConfig.maskChar || '*';
+                             if (len > (s + e)) {
+                                 this.$set(row, col, val.substring(0, s) + c.repeat(len - s - e) + val.substring(len - e));
+                             } else {
+                                 this.$set(row, col, c.repeat(len));
+                             }
+                         }
+                    }
+                });
+                this.batchDialogVisible = false;
+            },
+            // Sidebar Resize
+            startResize(e) {
+                this.isResizing = true;
+                window.addEventListener('mousemove', this.doResize);
+                window.addEventListener('mouseup', this.stopResize);
+                document.body.style.userSelect = 'none';
+            },
+            doResize(e) {
+                if (this.isResizing) {
+                    // Limit width
+                    if (e.clientX > 150 && e.clientX < 800) {
+                        this.sidebarWidth = e.clientX;
+                    }
+                }
+            },
+            stopResize() {
+                this.isResizing = false;
+                window.removeEventListener('mousemove', this.doResize);
+                window.removeEventListener('mouseup', this.stopResize);
+                document.body.style.userSelect = '';
+            }
+        }
+    });
+</script>
+</body>
+</html>
