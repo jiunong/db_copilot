@@ -94,6 +94,29 @@ public class DbService {
         String col = (String) payload.get("columnName");
         String type = (String) payload.get("type");
 
+        if ("shuffle".equals(type)) {
+            String sql = String.format(
+                    "MERGE INTO \"%s\".\"%s\" T " +
+                            "USING (" +
+                            "  SELECT T1.rid, T2.val " +
+                            "  FROM (" +
+                            "      SELECT ROWID as rid, ROW_NUMBER() OVER (ORDER BY ROWID) as rn " +
+                            "      FROM \"%s\".\"%s\"" +
+                            "  ) T1 " +
+                            "  JOIN (" +
+                            "      SELECT \"%s\" as val, ROW_NUMBER() OVER (ORDER BY dbms_random.value) as rn " +
+                            "      FROM \"%s\".\"%s\"" +
+                            "  ) T2 " +
+                            "  ON T1.rn = T2.rn" +
+                            ") S " +
+                            "ON (T.ROWID = S.rid) " +
+                            "WHEN MATCHED THEN UPDATE SET T.\"%s\" = S.val",
+                    schema, tableName, schema, tableName, col, schema, tableName, col
+            );
+            getJdbcTemplate(dbId).update(sql);
+            return;
+        }
+
         StringBuilder sql = new StringBuilder();
         sql.append("UPDATE \"").append(schema).append("\".\"").append(tableName).append("\" SET \"").append(col).append("\" = ");
 

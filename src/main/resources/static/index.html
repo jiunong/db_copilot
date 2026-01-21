@@ -292,6 +292,7 @@
                     <el-option label="数值减 (-)" value="sub"></el-option>
                     <el-option label="数值乘 (*)" value="mul"></el-option>
                     <el-option label="部分脱敏 (掩码)" value="mask"></el-option>
+                    <el-option label="打乱顺序 (Shuffle)" value="shuffle"></el-option>
                 </el-select>
             </el-form-item>
             <el-form-item label="值" v-if="batchConfig.type === 'fixed'">
@@ -674,6 +675,12 @@
                             this.updatingBatch = false;
                         });
                     }).catch(() => {});
+                    return;
+                }
+
+                if (type === 'shuffle') {
+                    this.shuffleColumn(col);
+                    this.batchDialogVisible = false;
                     return;
                 }
 
