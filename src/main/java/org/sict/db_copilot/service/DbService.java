@@ -201,6 +201,23 @@ public class DbService {
                 args.add(c);
                 args.add(c);
                 break;
+            case "replace":
+                String find = (String) payload.get("findValue");
+                String replace = (String) payload.get("replaceValue");
+                boolean isRegex = Boolean.TRUE.equals(payload.get("useRegex"));
+
+                if (isRegex) {
+                    // REGEXP_REPLACE(source, pattern, replace, position, occurrence)
+                    // occurrence 0 means replace all
+                    sql.append("REGEXP_REPLACE(\"").append(col).append("\", ?, ?, 1, 0)");
+                    args.add(find);
+                    args.add(replace);
+                } else {
+                    sql.append("REPLACE(\"").append(col).append("\", ?, ?)");
+                    args.add(find);
+                    args.add(replace);
+                }
+                break;
             default:
                 throw new IllegalArgumentException("Unknown batch type: " + type);
         }
