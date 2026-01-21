@@ -176,15 +176,11 @@
                             <template slot="header" slot-scope="scope">
                                 <div style="display: flex; align-items: center; justify-content: space-between;">
                                     <span>{{ key }}</span>
-                                    <el-dropdown v-if="isEditing" trigger="click" @command="handleBatchCommand">
-                                        <span class="el-dropdown-link" style="cursor: pointer; color: #409EFF; padding: 2px;">
-                                            <i class="el-icon-finished"></i>
+                                    <el-tooltip v-if="isEditing" content="批量修改规则" placement="top">
+                                        <span style="cursor: pointer; color: #409EFF; padding: 2px;" @click="openBatchDialog(key)">
+                                            <i class="el-icon-setting"></i>
                                         </span>
-                                        <el-dropdown-menu slot="dropdown">
-                                            <el-dropdown-item :command="{type: 'dialog', col: key}">批量修改...</el-dropdown-item>
-                                            <el-dropdown-item :command="{type: 'shuffle', col: key}">打乱顺序 (当前页)</el-dropdown-item>
-                                        </el-dropdown-menu>
-                                    </el-dropdown>
+                                    </el-tooltip>
                                 </div>
                                 <span style="display:block; font-size: 11px; color: #909399; font-weight: normal;" v-if="getColumnComment(key)">{{ getColumnComment(key) }}</span>
                             </template>
@@ -629,26 +625,21 @@
                     this.savingData = false;
                 });
             },
-            handleBatchCommand(cmd) {
-                if (cmd.type === 'dialog') {
-                    this.batchConfig.columnName = cmd.col;
-                    this.batchConfig.type = 'fixed';
-                    this.batchConfig.value = '';
-                    this.batchDialogVisible = true;
-                } else if (cmd.type === 'shuffle') {
-                    this.shuffleColumn(cmd.col);
-                }
+            openBatchDialog(colName) {
+                this.batchConfig.columnName = colName;
+                this.batchConfig.type = 'fixed';
+                this.batchConfig.value = '';
+                this.batchDialogVisible = true;
             },
             shuffleColumn(col) {
-                 // Fisher-Yates Shuffle
-                 let values = this.tableData.map(r => r[col]);
-                 for (let i = values.length - 1; i > 0; i--) {
-                     const j = Math.floor(Math.random() * (i + 1));
-                     [values[i], values[j]] = [values[j], values[i]];
-                 }
-                 this.tableData.forEach((row, idx) => {
-                     this.$set(row, col, values[idx]);
-                 });
+                let values = this.tableData.map(r => r[col]);
+                for (let i = values.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [values[i], values[j]] = [values[j], values[i]];
+                }
+                this.tableData.forEach((row, idx) => {
+                    this.$set(row, col, values[idx]);
+                });
             },
             applyBatch() {
                 const col = this.batchConfig.columnName;
@@ -755,7 +746,10 @@
                              if (len > (s + e)) {
                                  this.$set(row, col, val.substring(0, s) + c.repeat(len - s - e) + val.substring(len - e));
                              } else {
-                      else if (type === 'replace') {
+                                 this.$set(row, col, c.repeat(len));
+                             }
+                         }
+                    } else if (type === 'replace') {
                         let original = row[col];
                         if (original != null) {
                             original = String(original);
@@ -775,9 +769,6 @@
                                 this.$set(row, col, original.split(find).join(replace));
                             }
                         }
-                    }            this.$set(row, col, c.repeat(len));
-                             }
-                         }
                     }
                 });
                 this.batchDialogVisible = false;
