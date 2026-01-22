@@ -75,8 +75,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
                 <configuration>
-                    <mainClass>org.sict.db_copilot.DbCopliotApplication</mainClass>
-                    <skip>true</skip>
+                    <mainClass>org.sict.db_copilot.DbCopilotApplication</mainClass>
                 </configuration>
                 <executions>
                     <execution>
