@@ -64,6 +64,13 @@
         .tabs button.active { border-bottom: 2px solid #1890ff; color: #1890ff; font-weight: bold; margin-bottom: -2px; }
         
         .tab-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* Fix Element UI Tabs height */
+        .el-tabs { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+        .el-tabs__header { margin-bottom: 0 !important; } 
+        .el-tabs__content { flex: 1; padding: 10px; overflow: auto; height: 100%; }
+        .el-tab-pane { height: 100%; display: flex; flex-direction: column; }
+
         .sql-editor-container { display: flex; flex-direction: column; height: 100%; }
         .sql-input { height: 150px; margin-bottom: 10px; }
         .result-area { flex: 1; overflow: auto; }
@@ -144,93 +151,96 @@
 
                 <!-- Data Tab -->
                 <div class="tab-pane" v-if="activeTab === 'data'">
-                    <div v-if="!currentTable" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看数据</div>
-                    <template v-else>
-                    <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 10px;">
-                        <h3 style="margin:0;">
-                            数据: {{ currentSchema }}.{{ currentTable }}
-                        </h3>
-                        <div>
-                             <el-button v-if="!isEditing" type="primary" size="small" icon="el-icon-edit" @click="toggleEdit(true)">解锁编辑</el-button>
-                             <template v-else>
-                                 <el-button type="success" size="small" icon="el-icon-check" @click="saveData" :loading="savingData">保存修改</el-button>
-                                 <el-button size="small" icon="el-icon-close" @click="toggleEdit(false)">取消</el-button>
-                                 <span style="margin-left: 10px; color: #E6A23C; font-size: 0.9em;"><i class="el-icon-warning"></i> 编辑模式</span>
-                             </template>
-                        </div>
-                    </div>
-                    
-                    <div v-if="currentTableObj" style="margin-bottom: 10px;">
-                        <el-input 
-                            v-model="currentTableObj.COMMENTS" 
-                            size="mini" 
-                            placeholder="Edit table comment..." 
-                            style="width: 100%;"
-                            @focus="focusComment(currentTableObj)" 
-                            @blur="updateTableComment(currentTableObj)">
-                            <template slot="prepend">Table Comment</template>
-                        </el-input>
-                    </div>
-                    <el-table :data="tableData" border height="100%" v-loading="loadingData" size="small" stripe>
-                         <el-table-column v-for="(val, key) in (tableData[0] || {})" :key="key" :prop="key" min-width="150" show-overflow-tooltip v-if="key !== '_ROWID_' && key !== 'RNUM' && key !== 'rnum'">
-                            <template slot="header" slot-scope="scope">
-                                <div style="display: flex; align-items: center; justify-content: space-between;">
-                                    <span>{{ key }}</span>
-                                    <el-tooltip v-if="isEditing" content="批量修改规则" placement="top">
-                                        <span style="cursor: pointer; color: #409EFF; padding: 2px;" @click="openBatchDialog(key)">
-                                            <i class="el-icon-setting"></i>
-                                        </span>
-                                    </el-tooltip>
+                    <div v-if="dataTabs.length === 0" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看数据</div>
+                    <el-tabs v-model="activeDataTab" type="card" closable @tab-remove="removeDataTab" v-else>
+                         <el-tab-pane v-for="item in dataTabs" :key="item.name" :label="item.name" :name="item.name">
+                            <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 10px;">
+                                <h3 style="margin:0;">
+                                    数据: {{ currentSchema }}.{{ item.name }}
+                                </h3>
+                                <div>
+                                     <el-button v-if="!item.isEditing" type="primary" size="small" icon="el-icon-edit" @click="toggleEdit(true)">解锁编辑</el-button>
+                                     <template v-else>
+                                         <el-button type="success" size="small" icon="el-icon-check" @click="saveData" :loading="item.saving">保存修改</el-button>
+                                         <el-button size="small" icon="el-icon-close" @click="toggleEdit(false)">取消</el-button>
+                                         <span style="margin-left: 10px; color: #E6A23C; font-size: 0.9em;"><i class="el-icon-warning"></i> 编辑模式</span>
+                                     </template>
                                 </div>
-                                <span style="display:block; font-size: 11px; color: #909399; font-weight: normal;" v-if="getColumnComment(key)">{{ getColumnComment(key) }}</span>
-                            </template>
-                             <template slot-scope="scope">
-                                <div v-if="isEditing">
-                                     <span v-if="isDateColumn(key)" style="color: #999; font-size: 0.9em; font-style: italic;" title="日期类型只读">
-                                         <i class="el-icon-lock"></i> {{ scope.row[key] }}
-                                     </span>
-                                     <el-input v-else size="mini" v-model="scope.row[key]"></el-input>
+                            </div>
+                            
+                            <div v-if="item.tableObj" style="margin-bottom: 10px;">
+                                <el-input 
+                                    v-model="item.tableObj.COMMENTS" 
+                                    size="mini" 
+                                    placeholder="Edit table comment..." 
+                                    style="width: 100%;"
+                                    @focus="focusComment(item.tableObj)" 
+                                    @blur="updateTableComment(item.tableObj)">
+                                    <template slot="prepend">Table Comment</template>
+                                </el-input>
+                            </div>
+                            <el-table :data="item.data" border height="100%" v-loading="item.loading" size="small" stripe>
+                                 <el-table-column v-for="(val, key) in (item.data[0] || {})" :key="key" :prop="key" min-width="150" show-overflow-tooltip v-if="key !== '_ROWID_' && key !== 'RNUM' && key !== 'rnum'">
+                                    <template slot="header" slot-scope="scope">
+                                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                                            <span>{{ key }}</span>
+                                            <el-tooltip v-if="item.isEditing" content="批量修改规则" placement="top">
+                                                <span style="cursor: pointer; color: #409EFF; padding: 2px;" @click="openBatchDialog(key)">
+                                                    <i class="el-icon-setting"></i>
+                                                </span>
+                                            </el-tooltip>
+                                        </div>
+                                        <span style="display:block; font-size: 11px; color: #909399; font-weight: normal;" v-if="getColumnComment(key)">{{ getColumnComment(key) }}</span>
+                                    </template>
+                                     <template slot-scope="scope">
+                                        <div v-if="item.isEditing">
+                                             <span v-if="isDateColumn(key)" style="color: #999; font-size: 0.9em; font-style: italic;" title="日期类型只读">
+                                                 <i class="el-icon-lock"></i> {{ scope.row[key] }}
+                                             </span>
+                                             <el-input v-else size="mini" v-model="scope.row[key]"></el-input>
+                                        </div>
+                                        <span v-else>{{ scope.row[key] }}</span>
+                                    </template>
+                                 </el-table-column>
+                            </el-table>
+                                <div class="pagination">
+                                    <el-pagination
+                                        @current-change="handlePageChange"
+                                        :current-page="item.page"
+                                        :page-size="item.size"
+                                        :total="item.total"
+                                        layout="total, prev, pager, next, jumper">
+                                    </el-pagination>
                                 </div>
-                                <span v-else>{{ scope.row[key] }}</span>
-                            </template>
-                         </el-table-column>
-                    </el-table>
-                        <div class="pagination">
-                            <el-pagination
-                                @current-change="handlePageChange"
-                                :current-page="page"
-                                :page-size="size"
-                                :total="total"
-                                layout="total, prev, pager, next, jumper">
-                            </el-pagination>
-                        </div>
-                    </template>
+                         </el-tab-pane>
+                    </el-tabs>
                 </div>
 
                 <!-- Structure Tab -->
                 <div class="tab-pane" v-if="activeTab === 'structure'">
-                    <div v-if="!currentTable" style="margin-top: 50px; text-align: center; color: #ccc;">Select a table to view structure</div>
-                     <template v-else>
-                         <h3>Structure: {{ currentSchema }}.{{ currentTable }}</h3>
-                         <el-table :data="tableColumns" border height="100%" v-loading="loadingColumns" size="small" stripe>
-                            <el-table-column prop="COLUMN_NAME" label="列名" width="180"></el-table-column>
-                            <el-table-column prop="DATA_TYPE" label="类型" width="120"></el-table-column>
-                            <el-table-column prop="DATA_LENGTH" label="长度" width="80"></el-table-column>
-                            <el-table-column prop="NULLABLE" label="可空" width="80"></el-table-column>
-                            <el-table-column label="备注">
-                                <template slot-scope="scope">
-                                    <el-input 
-                                        v-model="scope.row.COMMENTS" 
-                                        class="comment-input" 
-                                        size="mini" 
-                                        placeholder="添加备注..." 
-                                        @focus="focusComment(scope.row)" 
-                                        @blur="updateColumnComment(scope.row)">
-                                    </el-input>
-                                </template>
-                            </el-table-column>
-                        </el-table>
-                     </template>
+                    <div v-if="structureTabs.length === 0" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看结构</div>
+                    <el-tabs v-model="activeStructureTab" type="card" closable @tab-remove="removeStructureTab" v-else>
+                        <el-tab-pane v-for="item in structureTabs" :key="item.name" :label="item.name" :name="item.name">
+                             <el-table :data="item.columns" border height="100%" v-loading="item.loading" size="small" stripe>
+                                <el-table-column prop="COLUMN_NAME" label="列名" width="180"></el-table-column>
+                                <el-table-column prop="DATA_TYPE" label="类型" width="120"></el-table-column>
+                                <el-table-column prop="DATA_LENGTH" label="长度" width="80"></el-table-column>
+                                <el-table-column prop="NULLABLE" label="可空" width="80"></el-table-column>
+                                <el-table-column label="备注">
+                                    <template slot-scope="scope">
+                                        <el-input 
+                                            v-model="scope.row.COMMENTS" 
+                                            class="comment-input" 
+                                            size="mini" 
+                                            placeholder="添加备注..." 
+                                            @focus="focusComment(scope.row)" 
+                                            @blur="updateColumnComment(item.name, scope.row)">
+                                        </el-input>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                        </el-tab-pane>
+                    </el-tabs>
                 </div>
                 
                 <!-- SQL Editor Tab -->
@@ -357,14 +367,13 @@
             
             activeTab: 'data',
             
-            tableData: [],
-            total: 0,
-            page: 1,
-            size: 15,
-            loadingData: false,
+            // Data Tabs
+            dataTabs: [],
+            activeDataTab: '',
             
-            tableColumns: [],
-            loadingColumns: false,
+            // Structure Tabs
+            structureTabs: [],
+            activeStructureTab: '',
             
             sqlInput: '',
             sqlResult: null,
@@ -372,10 +381,6 @@
             executingSql: false,
 
             originalComment: '', // For tracking changes
-            
-            // Edit Mode
-            isEditing: false,
-            savingData: false,
             
             // Meta info
             columnTypeMap: {}, // key -> dataType (upper case)
@@ -408,6 +413,14 @@
             this.fetchDbList();
         },
         computed: {
+            currentDataTab() {
+                return this.dataTabs.find(t => t.name === this.activeDataTab);
+            },
+            currentTableColumns() {
+                if (!this.currentTable) return [];
+                const tab = this.structureTabs.find(t => t.name === this.currentTable);
+                return tab ? tab.columns : [];
+            },
             filteredTables() {
                 if (!this.tableFilter) return this.tables;
                 const lowerFilter = this.tableFilter.toLowerCase();
@@ -416,6 +429,25 @@
                     const comment = (t.COMMENTS || t.comments || '').toLowerCase();
                     return name.includes(lowerFilter) || comment.includes(lowerFilter);
                 });
+            }
+        },
+        watch: {
+            activeDataTab(val) {
+                if (val && this.activeTab === 'data') {
+                    this.currentTable = val;
+                    // Also update tableObj if available
+                    const tab = this.dataTabs.find(t => t.name === val);
+                    if (tab && tab.tableObj) {
+                        this.currentTableObj = tab.tableObj;
+                    }
+                }
+            },
+            activeTab(val) {
+                if (val === 'data' && this.activeDataTab) {
+                    this.currentTable = this.activeDataTab;
+                } else if (val === 'structure' && this.activeStructureTab) {
+                    this.currentTable = this.activeStructureTab; // Sync structure tab too if desired
+                }
             }
         },
         methods: {
@@ -447,6 +479,10 @@
                 });
             },
             selectDb(db) {
+                if (db.status !== 'UP') {
+                    this.$message.error('该数据库连接不可用，无法进行操作');
+                    return;
+                }
                 this.currentDbId = db.id;
                 this.currentDbName = db.name;
                 this.loadSchemas();
@@ -478,55 +514,131 @@
                 });
             },
             selectTable(t) {
-                this.currentTable = t.TABLE_NAME || t.table_name; // support upper/lower keys
+                const tableName = t.TABLE_NAME || t.table_name; // support upper/lower keys
+                this.currentTable = tableName;
                 this.currentTableObj = t;
-                this.page = 1;
-                this.loadTableData();
-                this.loadTableColumns(); // preload structure
+                
+                this.addDataTab(tableName, t);
+                this.addStructureTab(tableName);
             },
-            loadTableData() {
-                if (!this.currentTable) return;
-                this.loadingData = true;
-                axios.get(`/api/db/${this.currentDbId}/data/${this.currentSchema}/${this.currentTable}`, {
-                    params: { page: this.page, size: this.size }
+            addDataTab(tableName, tableObj) {
+                let tab = this.dataTabs.find(t => t.name === tableName);
+                if (!tab) {
+                    tab = { 
+                        name: tableName, 
+                        tableObj: tableObj,
+                        data: [], 
+                        page: 1, 
+                        size: 15, 
+                        total: 0, 
+                        loading: false,
+                        isEditing: false, 
+                        saving: false 
+                    };
+                    this.dataTabs.push(tab);
+                    this.loadTableData(tableName);
+                }
+                this.activeDataTab = tableName;
+            },
+            removeDataTab(targetName) {
+                const tabs = this.dataTabs;
+                let activeName = this.activeDataTab;
+                if (activeName === targetName) {
+                    tabs.forEach((tab, index) => {
+                        if (tab.name === targetName) {
+                            const nextTab = tabs[index + 1] || tabs[index - 1];
+                            if (nextTab) {
+                                activeName = nextTab.name;
+                            }
+                        }
+                    });
+                }
+                this.activeDataTab = activeName;
+                this.dataTabs = tabs.filter(tab => tab.name !== targetName);
+            },
+            addStructureTab(tableName) {
+                let tab = this.structureTabs.find(t => t.name === tableName);
+                if (!tab) {
+                    tab = { name: tableName, columns: [], loading: false };
+                    this.structureTabs.push(tab);
+                    this.loadTableColumns(tableName);
+                }
+                this.activeStructureTab = tableName;
+            },
+            removeStructureTab(targetName) {
+                const tabs = this.structureTabs;
+                let activeName = this.activeStructureTab;
+                if (activeName === targetName) {
+                    tabs.forEach((tab, index) => {
+                        if (tab.name === targetName) {
+                            const nextTab = tabs[index + 1] || tabs[index - 1];
+                            if (nextTab) {
+                                activeName = nextTab.name;
+                            }
+                        }
+                    });
+                }
+                this.activeStructureTab = activeName;
+                this.structureTabs = tabs.filter(tab => tab.name !== targetName);
+            },
+            loadTableData(tableName) {
+                if (!tableName) return;
+                const tab = this.dataTabs.find(t => t.name === tableName);
+                if (!tab) return;
+                
+                tab.loading = true;
+                axios.get(`/api/db/${this.currentDbId}/data/${this.currentSchema}/${tableName}`, {
+                    params: { page: tab.page, size: tab.size }
                 }).then(res => {
-                    this.tableData = res.data.data;
-                    this.total = res.data.total;
+                    tab.data = res.data.data;
+                    tab.total = res.data.total;
                 }).finally(() => {
-                    this.loadingData = false;
+                    tab.loading = false;
                 });
             },
-            loadTableColumns() {
-                this.loadingColumns = true;
-                axios.get(`/api/db/${this.currentDbId}/columns/${this.currentSchema}/${this.currentTable}`).then(res => {
-                    this.tableColumns = res.data;
-                    // Build type map
-                    this.columnTypeMap = {};
-                    if (this.tableColumns) {
-                        this.tableColumns.forEach(c => {
-                            const name = c.COLUMN_NAME || c.column_name;
-                            const type = c.DATA_TYPE || c.data_type;
-                            if (name && type) {
-                                this.columnTypeMap[name] = type.toUpperCase();
-                            }
-                        });
+            loadTableColumns(tableName) {
+                const tab = this.structureTabs.find(t => t.name === tableName);
+                if (!tab) return;
+                
+                tab.loading = true;
+                axios.get(`/api/db/${this.currentDbId}/columns/${this.currentSchema}/${tableName}`).then(res => {
+                    tab.columns = res.data;
+                    
+                    // Update type map if it is the current table
+                    if (tableName === this.currentTable) {
+                        this.columnTypeMap = {};
+                        if (tab.columns) {
+                            tab.columns.forEach(c => {
+                                const name = c.COLUMN_NAME || c.column_name;
+                                const type = c.DATA_TYPE || c.data_type;
+                                if (name && type) {
+                                    this.columnTypeMap[name] = type.toUpperCase();
+                                }
+                            });
+                        }
                     }
                 }).finally(() => {
-                    this.loadingColumns = false;
+                    tab.loading = false;
                 });
             },
             handlePageChange(val) {
-                this.page = val;
-                this.loadTableData();
+                const tab = this.currentDataTab;
+                if(tab) {
+                    tab.page = val;
+                    this.loadTableData(tab.name);
+                }
             },
             getColumnComment(colName) {
-                if (!this.tableColumns) return '';
+                if (!this.currentTableColumns) return '';
                 // Need to handle key sensitivity
-                const col = this.tableColumns.find(c => (c.COLUMN_NAME || c.column_name) === colName);
+                const col = this.currentTableColumns.find(c => (c.COLUMN_NAME || c.column_name) === colName);
                 return col ? (col.COMMENTS || col.comments) : '';
             },
             isDateColumn(colName) {
-                const type = this.columnTypeMap[colName];
+                if (!this.currentTableColumns) return false;
+                const col = this.currentTableColumns.find(c => (c.COLUMN_NAME || c.column_name) === colName);
+                if (!col) return false;
+                const type = (col.DATA_TYPE || col.data_type || '').toUpperCase();
                 return type && (type.includes('DATE') || type.includes('TIMESTAMP'));
             },
             executeSql() {
@@ -567,12 +679,12 @@
                      });
                 }
             },
-            updateColumnComment(column) {
+            updateColumnComment(tableName, column) {
                 const newComment = column.COMMENTS || column.comments;
                 if (newComment !== this.originalComment) {
                     axios.post(`/api/db/${this.currentDbId}/comment/column`, {
                         schema: this.currentSchema,
-                        tableName: this.currentTable,
+                        tableName: tableName,
                         columnName: column.COLUMN_NAME || column.column_name,
                         comment: newComment
                     }).then(() => {
@@ -582,14 +694,19 @@
                 }
             },
             toggleEdit(val) {
-                this.isEditing = val;
+                const tab = this.currentDataTab;
+                if(!tab) return;
+                tab.isEditing = val;
                 // If canceling, maybe reload data to discard changes?
                 if (!val) {
-                    this.loadTableData();
+                    this.loadTableData(tab.name);
                 }
             },
             saveData() {
-                const updates = this.tableData.filter(row => row._ROWID_ || row['_ROWID_']).map(row => {
+                const tab = this.currentDataTab;
+                if(!tab) return;
+                
+                const updates = tab.data.filter(row => row._ROWID_ || row['_ROWID_']).map(row => {
                      // Filter out internal keys like _ROWID_ and RNUM from creating the UPDATE statement data
                      const rowData = {};
                      const rid = row._ROWID_ || row['_ROWID_'];
@@ -609,20 +726,20 @@
                      return;
                 }
 
-                this.savingData = true;
+                tab.saving = true;
                 axios.post(`/api/db/${this.currentDbId}/data/update`, {
                     schema: this.currentSchema,
-                    tableName: this.currentTable,
+                    tableName: tab.name,
                     updates: updates
                 }).then(res => {
                     this.$message.success("保存成功");
-                    this.isEditing = false;
-                    this.loadTableData(); // Reload to refresh state
+                    tab.isEditing = false;
+                    this.loadTableData(tab.name); // Reload to refresh state
                 }).catch(err => {
                     this.$message.error("保存失败，请检查数据格式或后端日志.");
                     console.error(err);
                 }).finally(() => {
-                    this.savingData = false;
+                    tab.saving = false;
                 });
             },
             openBatchDialog(colName) {
@@ -632,16 +749,21 @@
                 this.batchDialogVisible = true;
             },
             shuffleColumn(col) {
-                let values = this.tableData.map(r => r[col]);
+                const tab = this.currentDataTab;
+                if(!tab) return;
+                let values = tab.data.map(r => r[col]);
                 for (let i = values.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
                     [values[i], values[j]] = [values[j], values[i]];
                 }
-                this.tableData.forEach((row, idx) => {
+                tab.data.forEach((row, idx) => {
                     this.$set(row, col, values[idx]);
                 });
             },
             applyBatch() {
+                const tab = this.currentDataTab;
+                if(!tab) return;
+                
                 const col = this.batchConfig.columnName;
                 const type = this.batchConfig.type;
                 
@@ -654,7 +776,7 @@
                     }).then(() => {
                         const payload = {
                             schema: this.currentSchema,
-                            tableName: this.currentTable,
+                            tableName: tab.name,
                             columnName: col,
                             type: type,
                             value: this.batchConfig.value,
@@ -673,7 +795,7 @@
                         axios.post(`/api/db/${this.currentDbId}/data/batch-update`, payload).then(() => {
                             this.$message.success("全表更新成功");
                             this.batchDialogVisible = false;
-                            this.loadTableData();
+                            this.loadTableData(tab.name);
                         }).catch(err => {
                             this.$message.error("更新失败: " + (err.response ? err.response.data : err.message));
                         }).finally(() => {
@@ -689,7 +811,7 @@
                     return;
                 }
 
-                this.tableData.forEach(row => {
+                tab.data.forEach(row => {
                     let distinctVal = null;
                     
                     if (type === 'fixed') {

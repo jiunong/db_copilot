@@ -24,6 +24,33 @@ public class DbService {
     // Map: dbId -> JdbcTemplate
     private final Map<String, JdbcTemplate> jdbcTemplateMap = new ConcurrentHashMap<>();
 
+    private String getDbType(String dbId) {
+        if (multiDbProperties.getList() != null) {
+            for (MultiDbProperties.DbConfig config : multiDbProperties.getList()) {
+                if (config.getId().equals(dbId)) {
+                    String driver = config.getDriverClassName();
+                    if (driver != null) {
+                        String lower = driver.toLowerCase();
+                        if (lower.contains("mysql")) return "mysql";
+                        if (lower.contains("oracle")) return "oracle";
+                        if (lower.contains("dm")) return "dm";
+                    }
+                    String url = config.getUrl();
+                    if (url != null) {
+                        String lowerUrl = url.toLowerCase();
+                        if (lowerUrl.contains("mysql")) return "mysql";
+                        if (lowerUrl.contains(":dm:")) return "dm";
+                    }
+                }
+            }
+        }
+        return "oracle";
+    }
+
+    private String getQuote(String dbId) {
+        return "mysql".equals(getDbType(dbId)) ? "`" : "\"";
+    }
+
     @PostConstruct
     public void init() {
         if (multiDbProperties.getList() != null) {
@@ -63,12 +90,20 @@ public class DbService {
 
     // 获取所有Schema (User)
     public List<Map<String, Object>> getAllSchemas(String dbId) {
+        if ("mysql".equals(getDbType(dbId))) {
+            String sql = "SELECT schema_name AS username FROM information_schema.schemata ORDER BY schema_name";
+            return getJdbcTemplate(dbId).queryForList(sql);
+        }
         String sql = "SELECT username FROM all_users ORDER BY username";
         return getJdbcTemplate(dbId).queryForList(sql);
     }
 
     // 获取指定Schema下的所有表及备注
     public List<Map<String, Object>> getTablesBySchema(String dbId, String schema) {
+        if ("mysql".equals(getDbType(dbId))) {
+            String sql = "SELECT TABLE_NAME, TABLE_COMMENT AS COMMENTS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME";
+            return getJdbcTemplate(dbId).queryForList(sql, schema);
+        }
         String sql = "SELECT t.table_name, c.comments " +
                      "FROM all_tables t " +
                      "LEFT JOIN all_tab_comments c ON t.owner = c.owner AND t.table_name = c.table_name " +
@@ -79,6 +114,11 @@ public class DbService {
 
     // 获取表结构详细信息
     public List<Map<String, Object>> getTableColumns(String dbId, String schema, String tableName) {
+        if ("mysql".equals(getDbType(dbId))) {
+            String sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH AS DATA_LENGTH, NUMERIC_PRECISION AS DATA_PRECISION, NUMERIC_SCALE AS DATA_SCALE, IS_NULLABLE AS NULLABLE, COLUMN_COMMENT AS COMMENTS " +
+                         "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION";
+            return getJdbcTemplate(dbId).queryForList(sql, schema, tableName);
+        }
         String sql = "SELECT t.column_name, t.data_type, t.data_length, t.data_precision, t.data_scale, t.nullable, c.comments " +
                      "FROM all_tab_columns t " +
                      "LEFT JOIN all_col_comments c ON t.owner = c.owner AND t.table_name = c.table_name AND t.column_name = c.column_name " +
@@ -225,9 +265,18 @@ public class DbService {
         getJdbcTemplate(dbId).update(sql.toString(), args.toArray());
     }
 
-    // 分页查询表数据 (使用 ROWNUM 兼容旧版本 Oracle)
+    // 分页查询表数据
     public List<Map<String, Object>> getTableData(String dbId, String schema, String tableName, int page, int size) {
         int startRow = (page - 1) * size;
+        
+        if ("mysql".equals(getDbType(dbId))) {
+             String sql = String.format(
+                "SELECT * FROM `%s`.`%s` LIMIT ? OFFSET ?",
+                schema, tableName
+             );
+             return getJdbcTemplate(dbId).queryForList(sql, size, startRow);
+        }
+
         int endRow = page * size;
         
         // 注意：表名和Schema名在SQL拼接时需要防范注入
@@ -361,7 +410,8 @@ public class DbService {
 
     // 获取表总记录数
     public Long getTableCount(String dbId, String schema, String tableName) {
-        String sql = String.format("SELECT COUNT(1) FROM \"%s\".\"%s\"", schema, tableName);
+        String quote = getQuote(dbId);
+        String sql = String.format("SELECT COUNT(1) FROM %s%s%s.%s%s%s", quote, schema, quote, quote, tableName, quote);
         return getJdbcTemplate(dbId).queryForObject(sql, Long.class);
     }
 
@@ -382,12 +432,20 @@ public class DbService {
     // 更新表备注
     public void commentOnTable(String dbId, String schema, String tableName, String comment) {
         String safeComment = comment == null ? "" : comment.replace("'", "''");
+        if ("mysql".equals(getDbType(dbId))) {
+             String sql = String.format("ALTER TABLE `%s`.`%s` COMMENT = '%s'", schema, tableName, safeComment);
+             getJdbcTemplate(dbId).execute(sql);
+             return;
+        }
         String sql = String.format("COMMENT ON TABLE \"%s\".\"%s\" IS '%s'", schema, tableName, safeComment);
         getJdbcTemplate(dbId).execute(sql);
     }
 
     // 更新字段备注
     public void commentOnColumn(String dbId, String schema, String tableName, String columnName, String comment) {
+        if ("mysql".equals(getDbType(dbId))) {
+            return;
+        }
         String safeComment = comment == null ? "" : comment.replace("'", "''");
         String sql = String.format("COMMENT ON COLUMN \"%s\".\"%s\".\"%s\" IS '%s'", schema, tableName, columnName, safeComment);
         getJdbcTemplate(dbId).execute(sql);
