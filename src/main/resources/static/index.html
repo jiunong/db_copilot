@@ -76,6 +76,12 @@
         .result-area { flex: 1; overflow: auto; }
 
         .pagination { margin-top: 10px; text-align: right; }
+        
+        .context-menu { position: fixed; background: white; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1); border: 1px solid #ebeef5; z-index: 3000; padding: 5px 0; border-radius: 4px; min-width: 120px; }
+        .context-menu ul { margin: 0; padding: 0; list-style: none; }
+        .context-menu li { padding: 8px 16px; cursor: pointer; font-size: 0.9rem; color: #606266; display: flex; align-items: center; }
+        .context-menu li:hover { background: #ecf5ff; color: #409EFF; }
+        .context-menu li i { margin-right: 5px; }
     </style>
 </head>
 <body>
@@ -153,12 +159,16 @@
                 <div class="tab-pane" v-if="activeTab === 'data'">
                     <div v-if="dataTabs.length === 0" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看数据</div>
                     <el-tabs v-model="activeDataTab" type="card" closable @tab-remove="removeDataTab" v-else>
-                         <el-tab-pane v-for="item in dataTabs" :key="item.name" :label="item.name" :name="item.name">
+                         <el-tab-pane v-for="item in dataTabs" :key="item.name" :name="item.name">
+                            <span slot="label" @contextmenu.prevent="onTabContextMenu($event, item.name, 'data')" style="display: inline-block; height: 100%; width: 100%;">
+                                {{ item.name }}
+                            </span>
                             <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 10px;">
                                 <h3 style="margin:0;">
-                                    数据: {{ currentSchema }}.{{ item.name }}
+                                    数据: {{ item.schema }}.{{ item.name }}
                                 </h3>
                                 <div>
+                                     <el-button size="small" icon="el-icon-document-copy" @click="exportCommentSql(item)" style="margin-right: 5px;">导出备注</el-button>
                                      <el-button v-if="!item.isEditing" type="primary" size="small" icon="el-icon-edit" @click="toggleEdit(true)">解锁编辑</el-button>
                                      <template v-else>
                                          <el-button type="success" size="small" icon="el-icon-check" @click="saveData" :loading="item.saving">保存修改</el-button>
@@ -175,7 +185,7 @@
                                     placeholder="Edit table comment..." 
                                     style="width: 100%;"
                                     @focus="focusComment(item.tableObj)" 
-                                    @blur="updateTableComment(item.tableObj)">
+                                    @blur="updateTableComment(item)">
                                     <template slot="prepend">Table Comment</template>
                                 </el-input>
                             </div>
@@ -220,7 +230,10 @@
                 <div class="tab-pane" v-if="activeTab === 'structure'">
                     <div v-if="structureTabs.length === 0" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看结构</div>
                     <el-tabs v-model="activeStructureTab" type="card" closable @tab-remove="removeStructureTab" v-else>
-                        <el-tab-pane v-for="item in structureTabs" :key="item.name" :label="item.name" :name="item.name">
+                        <el-tab-pane v-for="item in structureTabs" :key="item.name" :name="item.name">
+                            <span slot="label" @contextmenu.prevent="onTabContextMenu($event, item.name, 'structure')" style="display: inline-block; height: 100%; width: 100%;">
+                                {{ item.name }}
+                            </span>
                              <el-table :data="item.columns" border height="100%" v-loading="item.loading" size="small" stripe>
                                 <el-table-column prop="COLUMN_NAME" label="列名" width="180"></el-table-column>
                                 <el-table-column prop="DATA_TYPE" label="类型" width="120"></el-table-column>
@@ -234,7 +247,7 @@
                                             size="mini" 
                                             placeholder="添加备注..." 
                                             @focus="focusComment(scope.row)" 
-                                            @blur="updateColumnComment(item.name, scope.row)">
+                                            @blur="updateColumnComment(item, scope.row)">
                                         </el-input>
                                     </template>
                                 </el-table-column>
@@ -346,6 +359,16 @@
             <el-button type="primary" @click="applyBatch" size="small" :loading="updatingBatch">{{ batchConfig.applyAll ? '立即执行更新' : '应用到当前页' }}</el-button>
         </div>
     </el-dialog>
+
+    <!-- Context Menu -->
+    <div v-show="contextMenuVisible" class="context-menu" :style="{ left: contextMenuLeft + 'px', top: contextMenuTop + 'px' }" @click.stop>
+        <ul>
+            <li @click="closeTabs('other')"><i class="el-icon-close"></i> 关闭其他</li>
+            <li @click="closeTabs('all')"><i class="el-icon-circle-close"></i> 关闭全部</li>
+            <li @click="closeTabs('left')"><i class="el-icon-back"></i> 关闭左侧</li>
+            <li @click="closeTabs('right')"><i class="el-icon-right"></i> 关闭右侧</li>
+        </ul>
+    </div>
 </div>
 
 <script>
@@ -407,10 +430,21 @@
             
             // Sidebar Resize
             sidebarWidth: 250,
-            isResizing: false
+            isResizing: false,
+
+            // Context Menu
+            contextMenuVisible: false,
+            contextMenuLeft: 0,
+            contextMenuTop: 0,
+            contextMenuTargetName: '',
+            contextMenuTargetType: '',
         },
         mounted() {
             this.fetchDbList();
+            document.addEventListener('click', this.closeContextMenu);
+        },
+        beforeDestroy() {
+            document.removeEventListener('click', this.closeContextMenu);
         },
         computed: {
             currentDataTab() {
@@ -526,6 +560,7 @@
                 if (!tab) {
                     tab = { 
                         name: tableName, 
+                        schema: this.currentSchema,
                         tableObj: tableObj,
                         data: [], 
                         page: 1, 
@@ -559,7 +594,7 @@
             addStructureTab(tableName) {
                 let tab = this.structureTabs.find(t => t.name === tableName);
                 if (!tab) {
-                    tab = { name: tableName, columns: [], loading: false };
+                    tab = { name: tableName, schema: this.currentSchema, columns: [], loading: false };
                     this.structureTabs.push(tab);
                     this.loadTableColumns(tableName);
                 }
@@ -587,7 +622,7 @@
                 if (!tab) return;
                 
                 tab.loading = true;
-                axios.get(`/api/db/${this.currentDbId}/data/${this.currentSchema}/${tableName}`, {
+                axios.get(`/api/db/${this.currentDbId}/data/${tab.schema || this.currentSchema}/${tableName}`, {
                     params: { page: tab.page, size: tab.size }
                 }).then(res => {
                     tab.data = res.data.data;
@@ -601,7 +636,7 @@
                 if (!tab) return;
                 
                 tab.loading = true;
-                axios.get(`/api/db/${this.currentDbId}/columns/${this.currentSchema}/${tableName}`).then(res => {
+                axios.get(`/api/db/${this.currentDbId}/columns/${tab.schema || this.currentSchema}/${tableName}`).then(res => {
                     tab.columns = res.data;
                     
                     // Update type map if it is the current table
@@ -666,11 +701,12 @@
             focusComment(row) {
                  this.originalComment = row.COMMENTS || row.comments;
             },
-            updateTableComment(table) {
+            updateTableComment(item) {
+                const table = item.tableObj;
                 const newComment = table.COMMENTS || table.comments;
                 if (newComment !== this.originalComment) {
                      axios.post(`/api/db/${this.currentDbId}/comment/table`, {
-                         schema: this.currentSchema,
+                         schema: item.schema || this.currentSchema,
                          tableName: table.TABLE_NAME || table.table_name,
                          comment: newComment
                      }).then(() => {
@@ -679,12 +715,12 @@
                      });
                 }
             },
-            updateColumnComment(tableName, column) {
+            updateColumnComment(tabItem, column) {
                 const newComment = column.COMMENTS || column.comments;
                 if (newComment !== this.originalComment) {
                     axios.post(`/api/db/${this.currentDbId}/comment/column`, {
-                        schema: this.currentSchema,
-                        tableName: tableName,
+                        schema: tabItem.schema || this.currentSchema,
+                        tableName: tabItem.name,
                         columnName: column.COLUMN_NAME || column.column_name,
                         comment: newComment
                     }).then(() => {
@@ -728,7 +764,7 @@
 
                 tab.saving = true;
                 axios.post(`/api/db/${this.currentDbId}/data/update`, {
-                    schema: this.currentSchema,
+                    schema: tab.schema || this.currentSchema,
                     tableName: tab.name,
                     updates: updates
                 }).then(res => {
@@ -775,7 +811,7 @@
                         type: 'warning'
                     }).then(() => {
                         const payload = {
-                            schema: this.currentSchema,
+                            schema: tab.schema || this.currentSchema,
                             tableName: tab.name,
                             columnName: col,
                             type: type,
@@ -915,6 +951,106 @@
                 window.removeEventListener('mousemove', this.doResize);
                 window.removeEventListener('mouseup', this.stopResize);
                 document.body.style.userSelect = '';
+            },
+
+            // Context Menu Methods
+            onTabContextMenu(event, name, type) {
+                this.contextMenuVisible = true;
+                this.contextMenuLeft = event.clientX;
+                this.contextMenuTop = event.clientY;
+                this.contextMenuTargetName = name;
+                this.contextMenuTargetType = type;
+            },
+            closeContextMenu() {
+                this.contextMenuVisible = false;
+            },
+            exportCommentSql(item) {
+                const schema = item.schema || this.currentSchema;
+                const tableName = item.name;
+                const fullTableName = `${schema}.${tableName}`;
+                
+                let sql = '';
+                
+                // Table comment
+                const tableComment = item.tableObj.COMMENTS || item.tableObj.comments;
+                if (tableComment) {
+                    sql += `COMMENT ON TABLE ${fullTableName} IS '${tableComment.replace(/'/g, "''")}';\n`;
+                }
+                
+                // Column comments
+                const structureTab = this.structureTabs.find(t => t.name === tableName);
+                if (structureTab && structureTab.columns) {
+                    structureTab.columns.forEach(col => {
+                        const colName = col.COLUMN_NAME || col.column_name;
+                        const colComment = col.COMMENTS || col.comments;
+                        if (colComment) {
+                            sql += `COMMENT ON COLUMN ${fullTableName}.${colName} IS '${colComment.replace(/'/g, "''")}';\n`;
+                        }
+                    });
+                } else {
+                    this.$message.warning("正在加载列信息，请稍后再试或切换到结构标签查看");
+                    return;
+                }
+                
+                if (!sql) {
+                    this.$message.info("该表没有备注信息");
+                    return;
+                }
+                
+                // Copy to clipboard
+                const el = document.createElement('textarea');
+                el.value = sql;
+                document.body.appendChild(el);
+                el.select();
+                try {
+                    document.execCommand('copy');
+                    this.$message.success("备注 SQL 已复制到剪切板");
+                } catch (err) {
+                    this.$message.error("复制失败");
+                }
+                document.body.removeChild(el);
+            },
+            closeTabs(action) {
+                const isData = this.contextMenuTargetType === 'data';
+                let tabs = isData ? this.dataTabs : this.structureTabs;
+                const activeName = isData ? this.activeDataTab : this.activeStructureTab;
+                const targetName = this.contextMenuTargetName;
+                const targetIndex = tabs.findIndex(t => t.name === targetName);
+                
+                if (targetIndex === -1) return;
+
+                let newTabs = [];
+                
+                if (action === 'all') {
+                    newTabs = [];
+                } else if (action === 'other') {
+                    newTabs = tabs.filter(t => t.name === targetName);
+                } else if (action === 'left') {
+                    newTabs = tabs.slice(targetIndex);
+                } else if (action === 'right') {
+                   newTabs = tabs.slice(0, targetIndex + 1);
+                }
+                
+                // Update tabs
+                if (isData) {
+                    this.dataTabs = newTabs;
+                    // If active tab is gone, set active to target or last
+                    if (!newTabs.find(t => t.name === activeName)) {
+                        this.activeDataTab = newTabs.length ? newTabs[newTabs.length - 1].name : '';
+                    } else {
+                        // If we preserved tabs, check if we need to switch active tab if current active was closed
+                        // The above check handles if activeName is NOT in newTabs
+                    }
+                    if (newTabs.length === 0) this.activeDataTab = '';
+                } else {
+                    this.structureTabs = newTabs;
+                    if (!newTabs.find(t => t.name === activeName)) {
+                         this.activeStructureTab = newTabs.length ? newTabs[newTabs.length - 1].name : '';
+                    }
+                    if (newTabs.length === 0) this.activeStructureTab = '';
+                }
+                
+                this.contextMenuVisible = false;
             }
         }
     });
