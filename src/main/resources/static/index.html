@@ -137,10 +137,15 @@
                 <!-- Use Element Loading directive instead for better UX on sidebar? or keep simple -->
                 <div v-if="loadingTables" style="display:flex; justify-content:center; padding:10px;"><i class="el-icon-loading"></i></div>
                 <ul class="table-list" v-else>
-                    <li v-for="t in filteredTables" :key="t.TABLE_NAME || t.table_name" :class="{active: currentTable === (t.TABLE_NAME || t.table_name)}" @click="selectTable(t)">
-                        <span class="table-name">{{ t.TABLE_NAME || t.table_name }}</span>
-                        <!-- Handle case sensitivity in property names returned by map -->
-                        <span class="table-comment" v-if="t.COMMENTS || t.comments">{{ t.COMMENTS || t.comments }}</span>
+                    <li v-for="t in filteredTables" :key="t.TABLE_NAME || t.table_name" :class="{active: currentTable === (t.TABLE_NAME || t.table_name)}" @click="selectTable(t)" style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 5px; flex: 1;">
+                            <span class="table-name">{{ t.TABLE_NAME || t.table_name }}</span>
+                            <!-- Handle case sensitivity in property names returned by map -->
+                            <span class="table-comment" v-if="t.COMMENTS || t.comments">{{ t.COMMENTS || t.comments }}</span>
+                        </div>
+                        <el-tooltip content="插入表名到 SQL 编辑器" placement="right" :enterable="false">
+                            <i class="el-icon-plus" @click.stop="insertTableName(t)" style="color: #C0C4CC; font-weight: bold; padding: 5px; cursor: pointer;"></i>
+                        </el-tooltip>
                     </li>
                 </ul>
             </div>
@@ -313,6 +318,17 @@
                 <!-- SQL Editor Tab -->
                 <div class="tab-pane" v-if="activeTab === 'sql'">
                     <div class="sql-editor-container">
+                        <div style="margin-bottom: 5px;">
+                            <el-button-group>
+                                <el-button size="mini" @click="insertSql('SELECT * FROM ')">SELECT * FROM</el-button>
+                                <el-button size="mini" @click="insertSql('INSERT INTO ')">INSERT</el-button>
+                                <el-button size="mini" @click="insertSql('UPDATE ')">UPDATE</el-button>
+                                <el-button size="mini" @click="insertSql('DELETE FROM ')">DELETE</el-button>
+                                <el-button size="mini" @click="insertSql(' WHERE ')">WHERE</el-button>
+                                <el-button size="mini" @click="insertSql(' ORDER BY ')">ORDER BY</el-button>
+                            </el-button-group>
+                            <el-button size="mini" type="text" @click="sqlInput = ''; sqlResult = null;" style="margin-left: 10px; color: #909399;">清空</el-button>
+                        </div>
                         <el-input
                           type="textarea"
                           :rows="6"
@@ -563,6 +579,17 @@
                     if (tab && tab.tableObj) {
                         this.currentTableObj = tab.tableObj;
                     }
+            insertSql(text) {
+                this.sqlInput = (this.sqlInput || '') + text;
+                // Optional: focus textarea? 
+            },
+            insertTableName(t) {
+                const tableName = t.TABLE_NAME || t.table_name;
+                const fullName = (this.currentSchema ? this.currentSchema + '.' : '') + tableName;
+                this.insertSql(fullName + ' ');
+                this.activeTab = 'sql';
+                this.$message.success('已插入表名: ' + fullName);
+            },
                 }
             },
             activeTab(val) {
