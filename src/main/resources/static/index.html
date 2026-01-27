@@ -168,6 +168,7 @@
                                     数据: {{ item.schema }}.{{ item.name }}
                                 </h3>
                                 <div>
+                                     <el-button size="small" type="warning" plain icon="el-icon-refresh-left" @click="clearAllConditions(item)" style="margin-right: 5px;">重置查询</el-button>
                                      <el-button size="small" icon="el-icon-document-copy" @click="exportCommentSql(item)" style="margin-right: 5px;">导出备注</el-button>
                                      <el-button v-if="!item.isEditing" type="primary" size="small" icon="el-icon-edit" @click="toggleEdit(true)">解锁编辑</el-button>
                                      <template v-else>
@@ -190,26 +191,79 @@
                                 </el-input>
                             </div>
                             <el-table :data="item.data" border height="100%" v-loading="item.loading" size="small" stripe>
-                                 <el-table-column v-for="(val, key) in (item.data[0] || {})" :key="key" :prop="key" min-width="150" show-overflow-tooltip v-if="key !== '_ROWID_' && key !== 'RNUM' && key !== 'rnum'">
+                                 <el-table-column v-for="col in getTabColumns(item.name)" :key="col.COLUMN_NAME || col.column_name" :prop="col.COLUMN_NAME || col.column_name" min-width="150" show-overflow-tooltip>
                                     <template slot="header" slot-scope="scope">
-                                        <div style="display: flex; align-items: center; justify-content: space-between;">
-                                            <span>{{ key }}</span>
-                                            <el-tooltip v-if="item.isEditing" content="批量修改规则" placement="top">
-                                                <span style="cursor: pointer; color: #409EFF; padding: 2px;" @click="openBatchDialog(key)">
-                                                    <i class="el-icon-setting"></i>
+                                        <div style="display: flex; align-items: center; justify-content: space-between;"
+                                             :style="{
+                                                color: (isFiltered(item, col.COLUMN_NAME || col.column_name) || item.sort.column === (col.COLUMN_NAME || col.column_name)) ? '#409EFF' : 'inherit', 
+                                                fontWeight: (isFiltered(item, col.COLUMN_NAME || col.column_name) || item.sort.column === (col.COLUMN_NAME || col.column_name)) ? 'bold' : 'normal',
+                                                background: (isFiltered(item, col.COLUMN_NAME || col.column_name) || item.sort.column === (col.COLUMN_NAME || col.column_name)) ? '#ecf5ff' : 'transparent',
+                                                padding: '5px', borderRadius: '4px'
+                                             }">
+                                            <div @click="toggleSort(item, col.COLUMN_NAME || col.column_name)" style="cursor: pointer; flex: 1; display:flex; align-items:center;">
+                                                <span>{{ col.COLUMN_NAME || col.column_name }}</span>
+                                                <span style="display:inline-flex; flex-direction:column; margin-left:5px; line-height:0.5; vertical-align: middle;">
+                                                    <i class="el-icon-caret-top" 
+                                                       :style="{
+                                                           color: (item.sort.column === (col.COLUMN_NAME || col.column_name) && item.sort.order === 'asc') ? '#F56C6C' : '#C0C4CC',
+                                                           transform: (item.sort.column === (col.COLUMN_NAME || col.column_name) && item.sort.order === 'asc') ? 'scale(1.4)' : 'scale(1)'
+                                                       }"></i>
+                                                    <i class="el-icon-caret-bottom" 
+                                                       :style="{
+                                                           color: (item.sort.column === (col.COLUMN_NAME || col.column_name) && item.sort.order === 'desc') ? '#F56C6C' : '#C0C4CC',
+                                                           transform: (item.sort.column === (col.COLUMN_NAME || col.column_name) && item.sort.order === 'desc') ? 'scale(1.4)' : 'scale(1)'
+                                                       }"></i>
                                                 </span>
-                                            </el-tooltip>
+                                            </div>
+                                            
+                                            <div style="display: flex; align-items: center;">
+                                                <el-popover placement="bottom" width="220" trigger="click" v-model="item.visiblePopovers[col.COLUMN_NAME || col.column_name]" @show="initFilterState(item, col.COLUMN_NAME || col.column_name)">
+                                                    <div style="padding: 5px;">
+                                                        <div style="margin-bottom:10px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:5px;">
+                                                            筛选: {{ col.COLUMN_NAME || col.column_name }}
+                                                        </div>
+                                                        <el-select v-if="item.filterInputs[col.COLUMN_NAME || col.column_name]" v-model="item.filterInputs[col.COLUMN_NAME || col.column_name].operator" size="mini" style="width:100%; margin-bottom: 5px;">
+                                                            <el-option label="等于 (=)" value="="></el-option>
+                                                            <el-option label="包含 (Like)" value="like"></el-option>
+                                                            <el-option label="不包含 (Not Like)" value="not like"></el-option>
+                                                            <el-option label="包含于 (In)" value="in"></el-option>
+                                                            <el-option label="为空 (Is Null)" value="is null"></el-option>
+                                                            <el-option label="不为空 (Is Not Null)" value="is not null"></el-option>
+                                                            <el-option label="大于 (>)" value="gt"></el-option>
+                                                            <el-option label="小于 (<)" value="lt"></el-option>
+                                                            <el-option label="不等于 (!=)" value="!="></el-option>
+                                                        </el-select>
+                                                        <el-input v-if="item.filterInputs[col.COLUMN_NAME || col.column_name] && !['is null', 'is not null'].includes(item.filterInputs[col.COLUMN_NAME || col.column_name].operator)" 
+                                                                  v-model="item.filterInputs[col.COLUMN_NAME || col.column_name].value" size="mini" placeholder="值 (In 用逗号分隔)" @keyup.enter.native="applyFilter(item, col.COLUMN_NAME || col.column_name)"></el-input>
+                                                        
+                                                        <div style="text-align: right; margin-top: 10px;">
+                                                            <el-button size="mini" type="text" @click="clearFilter(item, col.COLUMN_NAME || col.column_name)" style="color: #909399;">清空</el-button>
+                                                            <el-button type="primary" size="mini" @click="applyFilter(item, col.COLUMN_NAME || col.column_name)">确定</el-button>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <span slot="reference" style="cursor: pointer; padding: 2px; margin-left: 5px;">
+                                                        <i class="el-icon-finished" :style="{color: isFiltered(item, col.COLUMN_NAME || col.column_name) ? '#F56C6C' : (isFiltered(item, col.COLUMN_NAME || col.column_name) || item.sort.column === (col.COLUMN_NAME || col.column_name)) ? '#409EFF' : '#909399', fontWeight: 'bold'}"></i>
+                                                    </span>
+                                                </el-popover>
+                                                
+                                                <el-tooltip v-if="item.isEditing" content="批量修改规则" placement="top">
+                                                    <span style="cursor: pointer; color: #409EFF; padding: 2px; margin-left: 5px;" @click="openBatchDialog(col.COLUMN_NAME || col.column_name)">
+                                                        <i class="el-icon-setting"></i>
+                                                    </span>
+                                                </el-tooltip>
+                                            </div>
                                         </div>
-                                        <span style="display:block; font-size: 11px; color: #909399; font-weight: normal;" v-if="getColumnComment(key)">{{ getColumnComment(key) }}</span>
+                                        <span style="display:block; font-size: 11px; color: #909399; font-weight: normal;" v-if="col.COMMENTS || col.comments">{{ col.COMMENTS || col.comments }}</span>
                                     </template>
                                      <template slot-scope="scope">
                                         <div v-if="item.isEditing">
-                                             <span v-if="isDateColumn(key)" style="color: #999; font-size: 0.9em; font-style: italic;" title="日期类型只读">
-                                                 <i class="el-icon-lock"></i> {{ scope.row[key] }}
+                                             <span v-if="isDateColumn(col.COLUMN_NAME || col.column_name)" style="color: #999; font-size: 0.9em; font-style: italic;" title="日期类型只读">
+                                                 <i class="el-icon-lock"></i> {{ scope.row[col.COLUMN_NAME || col.column_name] }}
                                              </span>
-                                             <el-input v-else size="mini" v-model="scope.row[key]"></el-input>
+                                             <el-input v-else size="mini" v-model="scope.row[col.COLUMN_NAME || col.column_name]"></el-input>
                                         </div>
-                                        <span v-else>{{ scope.row[key] }}</span>
+                                        <span v-else>{{ scope.row[col.COLUMN_NAME || col.column_name] }}</span>
                                     </template>
                                  </el-table-column>
                             </el-table>
@@ -269,6 +323,40 @@
                         <div style="text-align: right; margin-bottom: 10px;">
                             <el-button type="primary" size="small" @click="executeSql" :loading="executingSql">执行</el-button>
                         </div>
+
+                        <el-collapse v-model="sqlHelpActiveName" style="margin-bottom: 10px; border: 1px solid #EBEEF5;">
+                            <el-collapse-item name="1">
+                                <template slot="title">
+                                    <div style="padding: 0 10px;">
+                                        <i class="el-icon-notebook-1"></i> 使用提示 & 常用 DDL 写法
+                                    </div>
+                                </template>
+                                <div style="padding: 10px; font-family: Consolas, 'Courier New', monospace; font-size: 13px; background: #f9f9f9;">
+                                    <div style="color: #909399; margin-bottom: 5px;">-- 1. 创建表 (Create Table)</div>
+                                    <div style="color: #606266; margin-bottom: 10px;">
+                                        CREATE TABLE <span style="color: #E6A23C;">user_info</span> (<br>
+                                        &nbsp;&nbsp;id NUMBER(10) PRIMARY KEY,<br>
+                                        &nbsp;&nbsp;username VARCHAR2(50) NOT NULL,<br>
+                                        &nbsp;&nbsp;created_at DATE DEFAULT SYSDATE<br>
+                                        );
+                                    </div>
+
+                                    <div style="color: #909399; margin-bottom: 5px;">-- 2. 修改结构 (Alter Table)</div>
+                                    <div style="color: #606266; margin-bottom: 10px;">
+                                        ALTER TABLE user_info ADD (age NUMBER(3));<br>
+                                        ALTER TABLE user_info MODIFY (username VARCHAR2(100));<br>
+                                        ALTER TABLE user_info DROP COLUMN age;
+                                    </div>
+
+                                    <div style="color: #909399; margin-bottom: 5px;">-- 3. 添加注释 (Comment)</div>
+                                    <div style="color: #606266;">
+                                        COMMENT ON TABLE user_info IS '用户信息表';<br>
+                                        COMMENT ON COLUMN user_info.username IS '用户姓名';
+                                    </div>
+                                </div>
+                            </el-collapse-item>
+                        </el-collapse>
+
                         <div class="result-area">
                             <div v-if="sqlError" style="color: red; padding: 10px; border: 1px solid #ffcccc; background: #fff5f5;">
                                 {{ sqlError }}
@@ -402,6 +490,7 @@
             sqlResult: null,
             sqlError: null,
             executingSql: false,
+            sqlHelpActiveName: '',
 
             originalComment: '', // For tracking changes
             
@@ -568,7 +657,13 @@
                         total: 0, 
                         loading: false,
                         isEditing: false, 
-                        saving: false 
+                        saving: false,
+                        // New features
+                        sort: { column: '', order: '' }, // { column: 'ID', order: 'asc' }
+                        activeFilters: {}, // { COL: { operator: '=', value: '1' } }
+                        // UI states for popovers
+                        filterInputs: {}, // { COL: { operator: '=', value: '' } }
+                        visiblePopovers: {} // { COL: false }
                     };
                     this.dataTabs.push(tab);
                     this.loadTableData(tableName);
@@ -622,11 +717,37 @@
                 if (!tab) return;
                 
                 tab.loading = true;
-                axios.get(`/api/db/${this.currentDbId}/data/${tab.schema || this.currentSchema}/${tableName}`, {
-                    params: { page: tab.page, size: tab.size }
-                }).then(res => {
+                
+                // Build Payload
+                const filtersList = [];
+                for (const col in tab.activeFilters) {
+                    const f = tab.activeFilters[col];
+                    if (f && f.value !== null && f.value !== undefined) { // Check value validity
+                         if (f.operator === 'is null' || f.operator === 'is not null') {
+                             filtersList.push({ column: col, operator: f.operator, value: '' });
+                         } else if (f.value !== '') {
+                             filtersList.push({ column: col, operator: f.operator, value: f.value });
+                         }
+                    } else if (f && (f.operator === 'is null' || f.operator === 'is not null')) {
+                        filtersList.push({ column: col, operator: f.operator, value: '' });
+                    }
+                }
+
+                const payload = {
+                    page: tab.page,
+                    size: tab.size,
+                    sortColumn: tab.sort.column,
+                    sortOrder: tab.sort.order,
+                    filters: filtersList
+                };
+
+                axios.post(`/api/db/${this.currentDbId}/data/${tab.schema || this.currentSchema}/${tableName}/query`, payload)
+                .then(res => {
                     tab.data = res.data.data;
                     tab.total = res.data.total;
+                }).catch(err => {
+                    console.error(err);
+                    this.$message.error('加载数据失败: ' + (err.response ? err.response.data.error || err.response.data : err.message));
                 }).finally(() => {
                     tab.loading = false;
                 });
@@ -931,6 +1052,67 @@
                 });
                 this.batchDialogVisible = false;
             },
+
+            // Sort & Filter
+            getTabColumns(tableName) {
+               const tab = this.structureTabs.find(t => t.name === tableName);
+               return tab ? tab.columns : [];
+            },
+            initFilterState(tab, colName) {
+                if (!tab.filterInputs[colName]) {
+                    this.$set(tab.filterInputs, colName, { operator: '=', value: '' });
+                }
+                if (tab.visiblePopovers[colName] === undefined) {
+                    this.$set(tab.visiblePopovers, colName, false);
+                }
+            },
+            toggleSort(tab, colName) {
+                if (tab.sort.column === colName) {
+                    // Toggle order
+                    if (tab.sort.order === 'asc') tab.sort.order = 'desc';
+                    else if (tab.sort.order === 'desc') {
+                        // Clear sort (or loop to asc?)
+                        tab.sort.column = '';
+                        tab.sort.order = '';
+                    }
+                } else {
+                    tab.sort.column = colName;
+                    tab.sort.order = 'asc';
+                }
+                this.loadTableData(tab.name);
+            },
+            isFiltered(tab, colName) {
+                return tab.activeFilters[colName] && 
+                       (tab.activeFilters[colName].value || 
+                        ['is null', 'is not null'].includes(tab.activeFilters[colName].operator));
+            },
+            applyFilter(tab, colName) {
+                const input = tab.filterInputs[colName];
+                // Deep copy
+                this.$set(tab.activeFilters, colName, JSON.parse(JSON.stringify(input)));
+                this.$set(tab.visiblePopovers, colName, false);
+                tab.page = 1; // Reset to page 1
+                this.loadTableData(tab.name);
+            },
+            clearFilter(tab, colName) {
+                this.$delete(tab.activeFilters, colName);
+                // Reset input
+                if (tab.filterInputs[colName]) {
+                    tab.filterInputs[colName].value = '';
+                    tab.filterInputs[colName].operator = '=';
+                }
+                this.$set(tab.visiblePopovers, colName, false);
+                tab.page = 1;
+                this.loadTableData(tab.name);
+            },
+            clearAllConditions(tab) {
+                tab.activeFilters = {};
+                tab.filterInputs = {}; 
+                tab.sort = { column: '', order: '' };
+                tab.page = 1;
+                this.loadTableData(tab.name);
+            },
+            
             // Sidebar Resize
             startResize(e) {
                 this.isResizing = true;

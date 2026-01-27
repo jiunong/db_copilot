@@ -265,27 +265,98 @@ public class DbService {
         getJdbcTemplate(dbId).update(sql.toString(), args.toArray());
     }
 
-    // 分页查询表数据
-    public List<Map<String, Object>> getTableData(String dbId, String schema, String tableName, int page, int size) {
+    private Map<String, Object> buildWhereClause(String dbId, List<Map<String, Object>> filters) {
+        StringBuilder sb = new StringBuilder(" WHERE 1=1 ");
+        List<Object> args = new ArrayList<>();
+        if (filters != null) {
+            for (Map<String, Object> filter : filters) {
+                String col = (String) filter.get("column");
+                String op = (String) filter.get("operator");
+                String val = (String) filter.get("value");
+                if (col == null || op == null) continue;
+                
+                String quote = getQuote(dbId);
+                col = col.replace("\"", "").replace("`", ""); // Basic sanitization
+                
+                sb.append(" AND ").append(quote).append(col).append(quote).append(" ");
+                
+                switch (op) {
+                    case "=": sb.append("= ?"); args.add(val); break;
+                    case "!=": sb.append("!= ?"); args.add(val); break;
+                    case "gt": sb.append("> ?"); args.add(val); break;
+                    case "gte": sb.append(">= ?"); args.add(val); break;
+                    case "lt": sb.append("< ?"); args.add(val); break;
+                    case "lte": sb.append("<= ?"); args.add(val); break;
+                    case "like": sb.append("LIKE ?"); args.add("%" + val + "%"); break;
+                    case "not like": sb.append("NOT LIKE ?"); args.add("%" + val + "%"); break;
+                    case "is null": sb.append("IS NULL"); break;
+                    case "is not null": sb.append("IS NOT NULL"); break;
+                    case "in":
+                        if (val != null && !val.isEmpty()) {
+                            String[] parts = val.split("[,，]");
+                            sb.append("IN (");
+                            for (int i=0; i<parts.length; i++) {
+                                if (i>0) sb.append(",");
+                                sb.append("?");
+                                args.add(parts[i].trim());
+                            }
+                            sb.append(")");
+                        } else {
+                            sb.append("IS NULL");
+                        }
+                        break;
+                    default: break;
+                }
+            }
+        }
+        Map<String, Object> res = new HashMap<>();
+        res.put("sql", sb.toString());
+        res.put("args", args);
+        return res;
+    }
+
+    // 分页查询表数据 (With Filter & Sort)
+    public List<Map<String, Object>> getTableData(String dbId, String schema, String tableName, int page, int size, String sortColumn, String sortOrder, List<Map<String, Object>> filters) {
         int startRow = (page - 1) * size;
+        String quote = getQuote(dbId);
         
+        Map<String, Object> where = buildWhereClause(dbId, filters);
+        String whereSql = (String) where.get("sql");
+        List<Object> args = (List<Object>) where.get("args");
+        
+        String orderBy = "";
+        if (sortColumn != null && !sortColumn.isEmpty()) {
+            sortColumn = sortColumn.replace("\"", "").replace("`", "");
+            orderBy = " ORDER BY " + quote + sortColumn + quote + ("desc".equalsIgnoreCase(sortOrder) ? " DESC" : " ASC");
+        }
+
         if ("mysql".equals(getDbType(dbId))) {
              String sql = String.format(
-                "SELECT * FROM `%s`.`%s` LIMIT ? OFFSET ?",
-                schema, tableName
+                "SELECT * FROM `%s`.`%s` %s %s LIMIT ? OFFSET ?",
+                schema, tableName, whereSql, orderBy
              );
-             return getJdbcTemplate(dbId).queryForList(sql, size, startRow);
+             args.add(size);
+             args.add(startRow);
+             return getJdbcTemplate(dbId).queryForList(sql, args.toArray());
         }
 
         int endRow = page * size;
         
-        // 注意：表名和Schema名在SQL拼接时需要防范注入
-        // 显式获取 ROWID 用于后续更新定位
-        String sql = String.format(
-                "SELECT * FROM (SELECT a.*, ROWNUM rnum FROM (SELECT t.*, ROWIDTOCHAR(t.ROWID) as \"_ROWID_\" FROM \"%s\".\"%s\" t) a WHERE ROWNUM <= ?) WHERE rnum > ?",
-                schema, tableName
-        );
-        return getJdbcTemplate(dbId).queryForList(sql, endRow, startRow);
+        String innerSql = String.format("SELECT t.*, ROWIDTOCHAR(t.ROWID) as \"_ROWID_\" FROM \"%s\".\"%s\" t %s %s", schema, tableName, whereSql, orderBy);
+        
+        String sql = "SELECT * FROM (SELECT a.*, ROWNUM rnum FROM (" + innerSql + ") a WHERE ROWNUM <= ?) WHERE rnum > ?";
+        
+        // Oracle args need to be applied to innersql first, then outer logic
+        List<Object> finalArgs = new ArrayList<>(args);
+        finalArgs.add(endRow);
+        finalArgs.add(startRow);
+        
+        return getJdbcTemplate(dbId).queryForList(sql, finalArgs.toArray());
+    }
+
+    // Legacy method for backward compatibility if needed, calling new one
+    public List<Map<String, Object>> getTableData(String dbId, String schema, String tableName, int page, int size) {
+        return getTableData(dbId, schema, tableName, page, size, null, null, null);
     }
 
     // 批量更新表格数据 (基于 ROWID)
@@ -408,11 +479,20 @@ public class DbService {
         return dateStr; // Fallback
     }
 
-    // 获取表总记录数
-    public Long getTableCount(String dbId, String schema, String tableName) {
+    // 获取表总记录数 (With Filter)
+    public Long getTableCount(String dbId, String schema, String tableName, List<Map<String, Object>> filters) {
         String quote = getQuote(dbId);
-        String sql = String.format("SELECT COUNT(1) FROM %s%s%s.%s%s%s", quote, schema, quote, quote, tableName, quote);
-        return getJdbcTemplate(dbId).queryForObject(sql, Long.class);
+        StringBuilder sql = new StringBuilder(String.format("SELECT COUNT(1) FROM %s%s%s.%s%s%s", quote, schema, quote, quote, tableName, quote));
+        
+        Map<String, Object> where = buildWhereClause(dbId, filters);
+        sql.append(where.get("sql"));
+        
+        List<Object> args = (List<Object>) where.get("args");
+        return getJdbcTemplate(dbId).queryForObject(sql.toString(), Long.class, args.toArray());
+    }
+    
+    public Long getTableCount(String dbId, String schema, String tableName) {
+        return getTableCount(dbId, schema, tableName, null);
     }
 
     // 执行自定义SQL

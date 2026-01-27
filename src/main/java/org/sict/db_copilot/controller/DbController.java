@@ -51,6 +51,28 @@ public class DbController {
         return result;
     }
 
+    @PostMapping("/{dbId}/data/{schema}/{tableName}/query")
+    public Map<String, Object> queryData(@PathVariable String dbId,
+                                       @PathVariable String schema,
+                                       @PathVariable String tableName,
+                                       @RequestBody Map<String, Object> body) {
+        int page = body.get("page") instanceof Number ? ((Number) body.get("page")).intValue() : 1;
+        int size = body.get("size") instanceof Number ? ((Number) body.get("size")).intValue() : 10;
+        String sortColumn = (String) body.get("sortColumn");
+        String sortOrder = (String) body.get("sortOrder");
+        List<Map<String, Object>> filters = (List<Map<String, Object>>) body.get("filters");
+
+        List<Map<String, Object>> data = dbService.getTableData(dbId, schema, tableName, page, size, sortColumn, sortOrder, filters);
+        Long total = dbService.getTableCount(dbId, schema, tableName, filters);
+        
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("data", data);
+        result.put("total", total);
+        result.put("page", page);
+        result.put("size", size);
+        return result;
+    }
+
     @PostMapping("/{dbId}/data/update")
     public void updateData(@PathVariable String dbId, @RequestBody Map<String, Object> payload) {
         String schema = (String) payload.get("schema");
