@@ -1,0 +1,35 @@
+# 应用服务 WEB 访问端口
+server:
+  port: 18080
+
+# 数据库连接配置
+custom:
+  datasource:
+    list:
+      - id: LocalOracle
+        name: LocalOracle
+        url: jdbc:oracle:thin:@//localhost:1521/ORCL
+        username: DMISLN_WIND
+        password: DMISLN_WIND
+        driver-class-name: oracle.jdbc.OracleDriver
+      
+      - id: FaceAllOracle
+        name: FaceAllOracle
+        url: jdbc:oracle:thin:@//192.168.0.125:1521/ORCL
+        username: system
+        password: Oracle@123
+        driver-class-name: oracle.jdbc.OracleDriver
+      
+      - id: DM8
+        name: 调控云DM8
+        url: jdbc:dm://10.21.27.203:6003?schema=JSS_DB_JXJH&compatibleMode=oracle
+        username: JSS_DB
+        password: JSS_DB.2022
+        driver-class-name: dm.jdbc.driver.DmDriver
+      
+      - id: LocalMySql
+        name: Local MySQL
+        url: jdbc:mysql://localhost:3306/mysql?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+        username: root
+        password: Data.2020
+        driver-class-name: com.mysql.cj.jdbc.Driver
