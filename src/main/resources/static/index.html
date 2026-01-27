@@ -327,17 +327,21 @@
                                 <el-button size="mini" @click="insertSql(' WHERE ')">WHERE</el-button>
                                 <el-button size="mini" @click="insertSql(' ORDER BY ')">ORDER BY</el-button>
                             </el-button-group>
-                            <el-button size="mini" type="text" @click="sqlInput = ''; sqlResult = null;" style="margin-left: 10px; color: #909399;">清空</el-button>
+                            
+                            <el-button size="mini" type="primary" @click="executeSql" :loading="executingSql" icon="el-icon-video-play" style="margin-left: 10px;">执行</el-button>
+                            <el-tooltip content="清空当前输入" placement="top">
+                                <el-button size="mini" @click="clearSql" icon="el-icon-delete">清空</el-button>
+                            </el-tooltip>
                         </div>
-                        <el-input
-                          type="textarea"
-                          :rows="6"
-                          placeholder="请输入 SQL"
-                          v-model="sqlInput"
-                          class="sql-input">
-                        </el-input>
-                        <div style="text-align: right; margin-bottom: 10px;">
-                            <el-button type="primary" size="small" @click="executeSql" :loading="executingSql">执行</el-button>
+                        <div style="margin-bottom: 10px;">
+                            <el-input
+                              type="textarea"
+                              :rows="6"
+                              placeholder="请输入 SQL"
+                              v-model="sqlInput"
+                              class="sql-input"
+                              style="margin-bottom: 0;">
+                            </el-input>
                         </div>
 
                         <el-collapse v-model="sqlHelpActiveName" style="margin-bottom: 10px; border: 1px solid #EBEEF5;">
@@ -377,8 +381,16 @@
                             <div v-if="sqlError" style="color: red; padding: 10px; border: 1px solid #ffcccc; background: #fff5f5;">
                                 {{ sqlError }}
                             </div>
-                            <el-table v-if="sqlResult && sqlResult.length > 0" :data="sqlResult" border height="100%" size="small" stripe>
-                                <el-table-column v-for="(val, key) in sqlResult[0]" :key="key" :prop="key" min-width="120" show-overflow-tooltip></el-table-column>
+                            <el-table v-if="sqlResult && sqlResult.length > 0" :data="sqlResult" border height="100%" size="small" stripe @header-click="onSqlHeaderClick">
+                                <el-table-column v-for="(val, key) in sqlResult[0]" :key="key" :prop="key" min-width="120" show-overflow-tooltip>
+                                    <template slot="header" slot-scope="scope">
+                                        <el-tooltip content="点击复制列名" placement="top" :enterable="false">
+                                            <span style="cursor: pointer; color: #409EFF; text-decoration: underline dashed;">
+                                                <i class="el-icon-document-copy"></i> {{ scope.column.property }}
+                                            </span>
+                                        </el-tooltip>
+                                    </template>
+                                </el-table-column>
                             </el-table>
                             <div v-else-if="sqlResult" style="padding: 20px; color: #666;">
                                 无数据或结果集为空。
@@ -579,17 +591,6 @@
                     if (tab && tab.tableObj) {
                         this.currentTableObj = tab.tableObj;
                     }
-            insertSql(text) {
-                this.sqlInput = (this.sqlInput || '') + text;
-                // Optional: focus textarea? 
-            },
-            insertTableName(t) {
-                const tableName = t.TABLE_NAME || t.table_name;
-                const fullName = (this.currentSchema ? this.currentSchema + '.' : '') + tableName;
-                this.insertSql(fullName + ' ');
-                this.activeTab = 'sql';
-                this.$message.success('已插入表名: ' + fullName);
-            },
                 }
             },
             activeTab(val) {
@@ -601,6 +602,16 @@
             }
         },
         methods: {
+            insertSql(text) {
+                this.sqlInput = (this.sqlInput || '') + text;
+            },
+            insertTableName(t) {
+                const tableName = t.TABLE_NAME || t.table_name;
+                const fullName = (this.currentSchema ? this.currentSchema + '.' : '') + tableName;
+                this.insertSql(fullName + ' ');
+                this.activeTab = 'sql';
+                this.$message.success('已插入表名: ' + fullName);
+            },
             fetchDbList() {
                 this.loadingDbs = true;
                 axios.get('/api/db/list').then(res => {
@@ -823,6 +834,17 @@
                 if (!col) return false;
                 const type = (col.DATA_TYPE || col.data_type || '').toUpperCase();
                 return type && (type.includes('DATE') || type.includes('TIMESTAMP'));
+            },
+            clearSql() {
+                this.sqlInput = '';
+                this.sqlResult = null;
+                this.sqlError = null;
+            },
+            onSqlHeaderClick(column) {
+                if (column && column.property) {
+                    this.insertSql(column.property + ' ');
+                    this.$message.success('已插入列名: ' + column.property);
+                }
             },
             executeSql() {
                if(!this.sqlInput) return;
