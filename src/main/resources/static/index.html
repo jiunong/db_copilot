@@ -90,8 +90,9 @@
     <!-- DB Selection Screen -->
     <div v-if="!currentDbId" class="start-screen">
         <el-card class="db-card" shadow="hover">
-            <div slot="header" class="clearfix">
+            <div slot="header" class="clearfix" style="display: flex; justify-content: space-between; align-items: center;">
                 <span>选择数据库</span>
+                <el-button style="padding: 3px 0" type="text" icon="el-icon-plus" @click="openDbDialog()">添加链接</el-button>
             </div>
             <div v-if="loadingDbs" style="text-align: center; padding: 20px;">
                 <i class="el-icon-loading"></i>此处 正在加载配置...
@@ -99,9 +100,10 @@
             <div v-else-if="dbList.length === 0" style="text-align: center; padding: 20px; color: #999;">
                 未配置数据库.
             </div>
-            <div v-else>
+            <div v-else style="max-height: 400px; overflow-y: auto;">
                 <div v-for="db in dbList" :key="db.id" class="db-item" @click="selectDb(db)">
-                    <span style="font-weight: bold;">
+                    <span style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" :title="db.name">
+                        <i class="el-icon-database" style="margin-right: 5px; color: #409EFF;"></i>
                         {{ db.name }}
                         <!-- Connection Status Indicators -->
                         <i v-if="db.status === 'checking'" class="el-icon-loading" style="color: #909399; margin-left: 5px; font-size: 0.8em;"></i>
@@ -112,7 +114,10 @@
                             <i class="el-icon-circle-close" style="color: #F56C6C; margin-left: 5px;"></i>
                         </el-tooltip>
                     </span>
-                    <el-tag size="mini" type="info">{{ db.id }}</el-tag>
+                    <div style="flex-shrink: 0;">
+                        <el-button type="text" size="mini" icon="el-icon-edit" @click.stop="openDbDialog(db)"></el-button>
+                        <el-button type="text" size="mini" icon="el-icon-delete" @click.stop="deleteDbConfig(db)" style="color: #F56C6C;"></el-button>
+                    </div>
                 </div>
             </div>
         </el-card>
@@ -476,6 +481,39 @@
         </div>
     </el-dialog>
 
+    <!-- DB Config Dialog -->
+    <el-dialog :title="dbDialogTitle" :visible.sync="dbDialogVisible" width="600px" append-to-body>
+        <el-form :model="dbForm" label-width="120px" size="small">
+            <el-form-item label="ID (可选)">
+                <el-input v-model="dbForm.id" placeholder="如果不指定，将自动生成" :disabled="!!isEditDb"></el-input>
+            </el-form-item>
+            <el-form-item label="显示名称">
+                <el-input v-model="dbForm.name" placeholder="例如: 生产环境主库"></el-input>
+            </el-form-item>
+            <el-form-item label="JDBC URL">
+                <el-input v-model="dbForm.url" type="textarea" :rows="2" placeholder="jdbc:mysql://localhost:3306/test"></el-input>
+            </el-form-item>
+            <el-form-item label="用户名">
+                <el-input v-model="dbForm.username"></el-input>
+            </el-form-item>
+            <el-form-item label="密码">
+                <el-input v-model="dbForm.password" show-password></el-input>
+            </el-form-item>
+            <el-form-item label="Driver类名">
+                <el-select v-model="dbForm.driverClassName" filterable allow-create default-first-option placeholder="请选择或输入" style="width:100%">
+                    <el-option label="Oracle (oracle.jdbc.OracleDriver)" value="oracle.jdbc.OracleDriver"></el-option>
+                    <el-option label="MySQL (com.mysql.cj.jdbc.Driver)" value="com.mysql.cj.jdbc.Driver"></el-option>
+                    <el-option label="Dameng (dm.jdbc.driver.DmDriver)" value="dm.jdbc.driver.DmDriver"></el-option>
+                    <el-option label="PostgreSQL (org.postgresql.Driver)" value="org.postgresql.Driver"></el-option>
+                </el-select>
+            </el-form-item>
+        </el-form>
+        <div slot="footer" class="dialog-footer">
+            <el-button @click="dbDialogVisible = false" size="small">取消</el-button>
+            <el-button type="primary" @click="saveDbConfig" size="small">保存配置</el-button>
+        </div>
+    </el-dialog>
+
     <!-- Context Menu -->
     <div v-show="contextMenuVisible" class="context-menu" :style="{ left: contextMenuLeft + 'px', top: contextMenuTop + 'px' }" @click.stop>
         <ul>
@@ -519,6 +557,19 @@
             sqlError: null,
             executingSql: false,
             sqlHelpActiveName: '',
+
+            // Db Config Dialog
+            dbDialogVisible: false,
+            dbDialogTitle: '添加数据库连接',
+            isEditDb: false,
+            dbForm: {
+                id: '',
+                name: '',
+                url: '',
+                username: '',
+                password: '',
+                driverClassName: 'oracle.jdbc.OracleDriver'
+            },
 
             originalComment: '', // For tracking changes
             
@@ -602,6 +653,70 @@
             }
         },
         methods: {
+            openDbDialog(db) {
+                if (db) {
+                    this.isEditDb = true;
+                    this.dbDialogTitle = '编辑数据库连接';
+                    // Fetch full config
+                     axios.get('/api/db/config/' + db.id).then(res => {
+                         this.dbForm = res.data;
+                         this.dbDialogVisible = true;
+                     }).catch(err => {
+                         this.$message.error('加载配置失败: ' + err.message);
+                     });
+                } else {
+                    this.isEditDb = false;
+                    this.dbDialogTitle = '添加数据库连接';
+                    this.dbForm = {
+                        id: '',
+                        name: '',
+                        url: '',
+                        username: '',
+                        password: '',
+                        driverClassName: 'oracle.jdbc.OracleDriver'
+                    };
+                    this.dbDialogVisible = true;
+                }
+            },
+            saveDbConfig() {
+                const url = this.isEditDb ? '/api/db/update' : '/api/db/add';
+                axios.post(url, this.dbForm).then(res => {
+                   // Clean up nulls
+                   const form = this.dbForm;
+                   // Wait, dbService checks for ID on add.
+                   // Just send as is.
+                   this.$message.success('保存成功');
+                   this.dbDialogVisible = false;
+                   this.fetchDbList();
+                }).catch(err => {
+                     this.$message.error('保存失败: ' + (err.response ? err.response.data.error || err.response.data : err.message));
+                });
+            },
+            deleteDbConfig(db) {
+                this.$confirm('确定要删除数据库连接 [' + db.name + '] 吗?', '提示', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning'
+                }).then(() => {
+                    axios.post('/api/db/delete/' + db.id).then(res => {
+                        this.$message.success('删除成功');
+                        this.fetchDbList();
+                    }).catch(err => {
+                         this.$message.error('删除失败: ' + err.message);
+                    });
+                }).catch(() => {});
+            },
+            queryDriver(queryString, cb) {
+                const drivers = [
+                    { value: "oracle.jdbc.OracleDriver" },
+                    { value: "com.mysql.cj.jdbc.Driver" },
+                    { value: "dm.jdbc.driver.DmDriver" },
+                    { value: "org.postgresql.Driver" },
+                    { value: "com.microsoft.sqlserver.jdbc.SQLServerDriver" }
+                ];
+                const results = queryString ? drivers.filter(d => d.value.toLowerCase().includes(queryString.toLowerCase())) : drivers;
+                cb(results);
+            },
             insertSql(text) {
                 this.sqlInput = (this.sqlInput || '') + text;
             },

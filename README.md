@@ -21,33 +21,61 @@ Supports **Oracle**, **MySQL**, and **Dameng (DM)** databases.
 - **Frontend**: Vue.js 2, Element UI, Axios
 - **Databases**: Oracle, MySQL, Dameng
 
-## Getting Started
+## Deployment
 
-### Prerequisites
+### 1. Build Local Package
 
-- JDK 1.8
-- Maven 3.x
+Package the application using Maven:
 
-### Configuration
+```bash
+mvn clean package -DskipTests
+```
 
-Configure your database connections in `src/main/resources/application.yml`.
+This will generate `db_copilot-0.0.1-SNAPSHOT.jar` in the `target/` directory.
 
-```yaml
-server:
-  port: 18080
+### 2. Deploy to Linux Server with Docker
 
-custom:
-  datasource:
-    list:
-      - id: LocalOracle
-        name: Local Oracle
-        url: jdbc:oracle:thin:@//localhost:1521/ORCL
-        username: scott
-        password: tiger
-        driver-class-name: oracle.jdbc.OracleDriver
-      
-      - id: LocalMySQL
-        name: Local MySQL
+#### Step 1: Upload Files
+
+Create a directory on your server (e.g., `/opt/db-copilot`) and upload the following files:
+1. `target/db_copilot-0.0.1-SNAPSHOT.jar`
+2. `Dockerfile`
+
+#### Step 2: Build Docker Image
+
+Run the following command in the directory where you uploaded the files:
+
+```bash
+docker build -t db-copilot:v1 .
+```
+
+#### Step 3: Prepare Data Directory
+
+Create a directory to store persistent configurations (database connections):
+
+```bash
+mkdir -p /opt/db-copilot/config
+mkdir -p /opt/db-copilot/logs
+```
+
+#### Step 4: Run Container
+
+Run the application mapping the config directory to persist your database settings:
+
+```bash
+docker run -d \
+  --name db-copilot \
+  -p 18080:18080 \
+  -v /opt/db-copilot/config:/app/config \
+  -v /opt/db-copilot/logs:/app/logs \
+  -e JAVA_OPTS="-Xms512m -Xmx1024m" \
+  db-copilot:v1
+```
+
+- Access the application at: `http://<your-server-ip>:18080`
+- Database configurations will be saved to `/opt/db-copilot/config/db-copilot-config.json`.
+- Logs will be available in `/opt/db-copilot/logs`.
+
         url: jdbc:mysql://localhost:3306/test?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
         username: root
         password: password

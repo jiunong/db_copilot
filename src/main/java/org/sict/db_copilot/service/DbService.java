@@ -19,14 +19,14 @@ import java.util.stream.Collectors;
 public class DbService {
 
     @Autowired
-    private MultiDbProperties multiDbProperties;
+    private DbConfigManager dbConfigManager;
 
     // Map: dbId -> JdbcTemplate
     private final Map<String, JdbcTemplate> jdbcTemplateMap = new ConcurrentHashMap<>();
 
     private String getDbType(String dbId) {
-        if (multiDbProperties.getList() != null) {
-            for (MultiDbProperties.DbConfig config : multiDbProperties.getList()) {
+        if (dbConfigManager.getAllConfigs() != null) {
+            for (MultiDbProperties.DbConfig config : dbConfigManager.getAllConfigs()) {
                 if (config.getId().equals(dbId)) {
                     String driver = config.getDriverClassName();
                     if (driver != null) {
@@ -53,18 +53,65 @@ public class DbService {
 
     @PostConstruct
     public void init() {
-        if (multiDbProperties.getList() != null) {
-            for (MultiDbProperties.DbConfig config : multiDbProperties.getList()) {
+        refreshDataSources();
+    }
+
+    private void refreshDataSources() {
+        if (dbConfigManager.getAllConfigs() != null) {
+            for (MultiDbProperties.DbConfig config : dbConfigManager.getAllConfigs()) {
+                initDataSource(config);
+            }
+        }
+    }
+
+    private void initDataSource(MultiDbProperties.DbConfig config) {
+        try {
+            DataSource ds = DataSourceBuilder.create()
+                    .url(config.getUrl())
+                    .username(config.getUsername())
+                    .password(config.getPassword())
+                    .driverClassName(config.getDriverClassName())
+                    .build();
+            jdbcTemplateMap.put(config.getId(), new JdbcTemplate(ds));
+        } catch (Exception e) {
+            System.err.println("Failed to initialize datasource: " + config.getId() + " - " + e.getMessage());
+        }
+    }
+
+    public void addDbConfig(MultiDbProperties.DbConfig config) {
+        dbConfigManager.addConfig(config);
+        initDataSource(config);
+    }
+
+    public void updateDbConfig(MultiDbProperties.DbConfig config) {
+        // Close old datasource if possible? 
+        // For simplicity, we just overwrite. HikariCP might leak if not closed, but this is a low-frequency op.
+        closeDataSource(config.getId());
+        dbConfigManager.updateConfig(config);
+        initDataSource(config);
+    }
+
+    public void deleteDbConfig(String id) {
+        dbConfigManager.deleteConfig(id);
+        closeDataSource(id);
+        jdbcTemplateMap.remove(id);
+    }
+
+    private void closeDataSource(String id) {
+        JdbcTemplate template = jdbcTemplateMap.get(id);
+        if (template != null) {
+            DataSource ds = template.getDataSource();
+            if (ds instanceof AutoCloseable) {
                 try {
-                    DataSource ds = DataSourceBuilder.create()
-                            .url(config.getUrl())
-                            .username(config.getUsername())
-                            .password(config.getPassword())
-                            .driverClassName(config.getDriverClassName())
-                            .build();
-                    jdbcTemplateMap.put(config.getId(), new JdbcTemplate(ds));
+                    ((AutoCloseable) ds).close();
                 } catch (Exception e) {
-                    System.err.println("Failed to initialize datasource: " + config.getId() + " - " + e.getMessage());
+                    e.printStackTrace();
+                }
+            } else if (ds instanceof java.io.Closeable) {
+                try {
+                    ((java.io.Closeable) ds).close();
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
         }
@@ -78,9 +125,13 @@ public class DbService {
         return template;
     }
 
+    public MultiDbProperties.DbConfig getDbConfig(String id) {
+        return dbConfigManager.getConfig(id).orElse(null);
+    }
+
     public List<Map<String, String>> getDbList() {
-        if (multiDbProperties.getList() == null) return new ArrayList<>();
-        return multiDbProperties.getList().stream().map(config -> {
+        if (dbConfigManager.getAllConfigs() == null) return new ArrayList<>();
+        return dbConfigManager.getAllConfigs().stream().map(config -> {
             Map<String, String> map = new HashMap<>();
             map.put("id", config.getId());
             map.put("name", config.getName());

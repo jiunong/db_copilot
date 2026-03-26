@@ -1,5 +1,6 @@
 package org.sict.db_copilot.controller;
 
+import org.sict.db_copilot.config.MultiDbProperties;
 import org.sict.db_copilot.service.DbService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -96,6 +97,29 @@ public class DbController {
             error.put("error", e.getMessage());
             return error;
         }
+    }
+
+    @PostMapping("/add")
+    public void addDb(@RequestBody MultiDbProperties.DbConfig config) {
+        if (config.getId() == null || config.getId().isEmpty()) {
+            config.setId("db-" + System.currentTimeMillis());
+        }
+        dbService.addDbConfig(config);
+    }
+
+    @PostMapping("/update")
+    public void updateDb(@RequestBody MultiDbProperties.DbConfig config) {
+        dbService.updateDbConfig(config);
+    }
+
+    @PostMapping("/delete/{id}")
+    public void deleteDb(@PathVariable String id) {
+        dbService.deleteDbConfig(id);
+    }
+
+    @GetMapping("/config/{id}")
+    public MultiDbProperties.DbConfig getDbConfig(@PathVariable String id) {
+        return dbService.getDbConfig(id);
     }
 
     @PostMapping("/{dbId}/comment/table")
