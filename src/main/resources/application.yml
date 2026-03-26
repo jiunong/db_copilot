@@ -33,3 +33,10 @@ custom:
         username: root
         password: Data.2020
         driver-class-name: com.mysql.cj.jdbc.Driver
+
+      - id: ORACLE-218
+        name: ORACLE-218
+        url: jdbc:oracle:thin:@//10.21.14.218:1521/ORCL
+        username: DMISLN_WIND
+        password: DMISLN_WIND
+        driver-class-name: oracle.jdbc.OracleDriver

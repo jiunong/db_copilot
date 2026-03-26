@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  db-copilot:
+    build: .
+    container_name: db-copilot
+    ports:
+      - "18080:18080"
+    volumes:
+      # 挂载配置文件目录,实现配置文件可随时修改
+      - ./config:/app/config
+    environment:
+      - JAVA_OPTS=-Xms512m -Xmx1024m
+    restart: unless-stopped
