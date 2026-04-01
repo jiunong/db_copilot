@@ -174,22 +174,39 @@
             <div class="resizer" @mousedown="startResize" :class="{ resizing: isResizing }"></div>
 
             <!-- Main Content -->
-            <div class="content">
-                <div class="tabs">
+            <div class="content" style="padding: 0; display: flex; flex-direction: column; overflow: hidden;">
+                
+                <!-- Table Tabs (Moved to top) -->
+                <div v-show="dataTabs.length > 0" style="padding: 5px 10px 0 10px; background: #fdfdfd; border-bottom: 1px solid #e4e7ed;">
+                    <el-tabs v-model="activeDataTab" type="card" closable @tab-remove="removeTableTab" style="margin-bottom: -1px;">
+                         <el-tab-pane v-for="item in dataTabs" :key="item.name" :name="item.name">
+                            <span slot="label" @contextmenu.prevent="onTabContextMenu($event, item.name, 'data')">
+                                <i class="el-icon-menu" style="color: #409EFF; margin-right: 3px;"></i> {{ item.name }}
+                            </span>
+                         </el-tab-pane>
+                    </el-tabs>
+                </div>
+
+                <!-- Functional Tabs (Data/Structure/SQL Editor) moved below the table tabs -->
+                <div class="tabs" style="padding: 5px 10px; margin-bottom: 0; background: #fff; border-bottom: 1px solid #eee;">
                     <button :class="{active: activeTab === 'data'}" @click="activeTab = 'data'">数据</button>
                     <button :class="{active: activeTab === 'structure'}" @click="activeTab = 'structure'">结构</button>
                     <button :class="{active: activeTab === 'sql'}" @click="activeTab = 'sql'">SQL编辑器</button>
                 </div>
 
-                <!-- Data Tab -->
-                <div class="tab-pane" v-if="activeTab === 'data'">
-                    <div v-if="dataTabs.length === 0" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看数据</div>
-                    <el-tabs v-model="activeDataTab" type="card" closable @tab-remove="removeDataTab" v-else>
-                         <el-tab-pane v-for="item in dataTabs" :key="item.name" :name="item.name">
-                            <span slot="label" @contextmenu.prevent="onTabContextMenu($event, item.name, 'data')" style="display: inline-block; height: 100%; width: 100%;">
-                                {{ item.name }}
-                            </span>
-                            <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 10px;">
+                <!-- Data & Structure Display Area -->
+                <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 10px; background: #fff;">
+                    
+                    <div v-if="dataTabs.length === 0 && activeTab !== 'sql'" style="margin-top: 50px; text-align: center; color: #aaa;">
+                        <i class="el-icon-mouse" style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
+                        请在左侧选择表以查看数据和结构
+                    </div>
+
+                    <!-- Data Tab Content -->
+                    <div class="tab-pane" v-show="activeTab === 'data' && activeDataTab">
+                        <template v-for="item in dataTabs">
+                            <div v-if="item.name === activeDataTab" :key="item.name" style="height: 100%; display: flex; flex-direction: column;">
+                                <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom: 10px;">
                                 <h3 style="margin:0;">
                                     数据: {{ item.schema }}.{{ item.name }}
                                 </h3>
@@ -302,19 +319,15 @@
                                         layout="total, prev, pager, next, jumper">
                                     </el-pagination>
                                 </div>
-                         </el-tab-pane>
-                    </el-tabs>
-                </div>
+                            </div>
+                        </template>
+                    </div>
 
-                <!-- Structure Tab -->
-                <div class="tab-pane" v-if="activeTab === 'structure'">
-                    <div v-if="structureTabs.length === 0" style="margin-top: 50px; text-align: center; color: #ccc;">请选择左侧表以查看结构</div>
-                    <el-tabs v-model="activeStructureTab" type="card" closable @tab-remove="removeStructureTab" v-else>
-                        <el-tab-pane v-for="item in structureTabs" :key="item.name" :name="item.name">
-                            <span slot="label" @contextmenu.prevent="onTabContextMenu($event, item.name, 'structure')" style="display: inline-block; height: 100%; width: 100%;">
-                                {{ item.name }}
-                            </span>
-                             <el-table :data="item.columns" border height="100%" v-loading="item.loading" size="small" stripe>
+                    <!-- Structure Tab Content -->
+                    <div class="tab-pane" v-show="activeTab === 'structure' && activeDataTab">
+                        <template v-for="item in structureTabs">
+                            <div v-if="item.name === activeDataTab" :key="item.name" style="height: 100%; display: flex; flex-direction: column;">
+                                 <el-table :data="item.columns" border height="100%" v-loading="item.loading" size="small" stripe>
                                 <el-table-column prop="COLUMN_NAME" label="列名" width="180"></el-table-column>
                                 <el-table-column prop="DATA_TYPE" label="类型" width="120"></el-table-column>
                                 <el-table-column prop="DATA_LENGTH" label="长度" width="80"></el-table-column>
@@ -332,13 +345,13 @@
                                     </template>
                                 </el-table-column>
                             </el-table>
-                        </el-tab-pane>
-                    </el-tabs>
-                </div>
+                            </div>
+                        </template>
+                    </div>
                 
-                <!-- SQL Editor Tab -->
-                <div class="tab-pane" v-if="activeTab === 'sql'">
-                    <div class="sql-editor-container">
+                    <!-- SQL Editor Tab Content -->
+                    <div class="tab-pane" v-show="activeTab === 'sql'">
+                        <div class="sql-editor-container">
                         <div style="margin-bottom: 5px;">
                             <el-button-group>
                                 <el-button size="mini" @click="insertSql('SELECT * FROM ')">SELECT * FROM</el-button>
@@ -901,6 +914,10 @@
                 this.activeStructureTab = activeName;
                 this.structureTabs = tabs.filter(tab => tab.name !== targetName);
             },
+            removeTableTab(targetName) {
+                this.removeDataTab(targetName);
+                this.removeStructureTab(targetName);
+            },
             loadTableData(tableName) {
                 if (!tableName) return;
                 const tab = this.dataTabs.find(t => t.name === tableName);
@@ -1394,43 +1411,38 @@
                 document.body.removeChild(el);
             },
             closeTabs(action) {
-                const isData = this.contextMenuTargetType === 'data';
-                let tabs = isData ? this.dataTabs : this.structureTabs;
-                const activeName = isData ? this.activeDataTab : this.activeStructureTab;
+                let tabs = this.dataTabs;
+                const activeName = this.activeDataTab;
                 const targetName = this.contextMenuTargetName;
                 const targetIndex = tabs.findIndex(t => t.name === targetName);
                 
                 if (targetIndex === -1) return;
 
                 let newTabs = [];
+                let newStructureTabs = [];
                 
                 if (action === 'all') {
                     newTabs = [];
+                    newStructureTabs = [];
                 } else if (action === 'other') {
                     newTabs = tabs.filter(t => t.name === targetName);
+                    newStructureTabs = this.structureTabs.filter(t => t.name === targetName);
                 } else if (action === 'left') {
                     newTabs = tabs.slice(targetIndex);
+                    newStructureTabs = this.structureTabs.slice(targetIndex);
                 } else if (action === 'right') {
-                   newTabs = tabs.slice(0, targetIndex + 1);
+                    newTabs = tabs.slice(0, targetIndex + 1);
+                    newStructureTabs = this.structureTabs.slice(0, targetIndex + 1);
                 }
                 
-                // Update tabs
-                if (isData) {
-                    this.dataTabs = newTabs;
-                    // If active tab is gone, set active to target or last
-                    if (!newTabs.find(t => t.name === activeName)) {
-                        this.activeDataTab = newTabs.length ? newTabs[newTabs.length - 1].name : '';
-                    } else {
-                        // If we preserved tabs, check if we need to switch active tab if current active was closed
-                        // The above check handles if activeName is NOT in newTabs
-                    }
-                    if (newTabs.length === 0) this.activeDataTab = '';
-                } else {
-                    this.structureTabs = newTabs;
-                    if (!newTabs.find(t => t.name === activeName)) {
-                         this.activeStructureTab = newTabs.length ? newTabs[newTabs.length - 1].name : '';
-                    }
-                    if (newTabs.length === 0) this.activeStructureTab = '';
+                this.dataTabs = newTabs;
+                this.structureTabs = newStructureTabs;
+                
+                if (!newTabs.find(t => t.name === activeName)) {
+                    this.activeDataTab = newTabs.length ? newTabs[newTabs.length - 1].name : '';
+                }
+                if (newTabs.length === 0) {
+                    this.activeDataTab = '';
                 }
                 
                 this.contextMenuVisible = false;
