@@ -132,11 +132,27 @@
         <div class="main-container">
             <!-- Sidebar -->
             <div class="sidebar" :style="{ width: sidebarWidth + 'px' }">
-                <div class="schema-select">
-                    <el-select v-model="currentSchema" placeholder="选择 Schema" filterable @change="loadTables" size="small" style="width: 100%;">
-                        <el-option v-for="s in schemas" :key="s.USERNAME || s.username" :label="s.USERNAME || s.username" :value="s.USERNAME || s.username"></el-option>
-                    </el-select>
-                    <el-input v-model="tableFilter" placeholder="筛选表名/备注..." size="small" clearable style="margin-top: 5px;"></el-input>
+                <div class="schema-select" style="display: flex; flex-direction: column;">
+                    <div style="margin-bottom: 5px;">
+                        <el-radio-group v-model="schemaPrefixFilter" size="mini" style="display: flex; flex-wrap: wrap; margin-bottom: 2px;">
+                            <el-radio-button label="">全部</el-radio-button>
+                            <el-radio-button label="D">D-</el-radio-button>
+                        </el-radio-group>
+                    </div>
+                    <div class="schema-list" style="max-height: 150px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px dashed #e0e0e0;">
+                        <el-tag
+                            v-for="s in sortedSchemas"
+                            :key="s.USERNAME || s.username"
+                            :type="currentSchema === (s.USERNAME || s.username) ? 'primary' : 'info'"
+                            :effect="currentSchema === (s.USERNAME || s.username) ? 'dark' : 'plain'"
+                            style="cursor: pointer;"
+                            @click="selectSchema(s.USERNAME || s.username)"
+                            size="mini"
+                        >
+                            {{ s.USERNAME || s.username }}
+                        </el-tag>
+                    </div>
+                    <el-input v-model="tableFilter" placeholder="筛选表名/备注..." size="small" clearable></el-input>
                 </div>
                 <!-- <div v-if="loadingTables" style="padding: 20px; text-align: center; color: #999;">Loading tables...</div> -->
                 <!-- Use Element Loading directive instead for better UX on sidebar? or keep simple -->
@@ -536,6 +552,7 @@
             
             schemas: [],
             currentSchema: '',
+            schemaPrefixFilter: '',
             tables: [],
             currentTable: '',
             currentTableObj: null,
@@ -615,6 +632,22 @@
             document.removeEventListener('click', this.closeContextMenu);
         },
         computed: {
+            sortedSchemas() {
+                let filtered = this.schemas;
+                if (this.schemaPrefixFilter) {
+                    filtered = filtered.filter(s => {
+                        const name = (s.USERNAME || s.username || '').toUpperCase();
+                        return name.startsWith(this.schemaPrefixFilter.toUpperCase());
+                    });
+                }
+                return [...filtered].sort((a, b) => {
+                    const nameA = (a.USERNAME || a.username || '').toUpperCase();
+                    const nameB = (b.USERNAME || b.username || '').toUpperCase();
+                    if (nameA < nameB) return -1;
+                    if (nameA > nameB) return 1;
+                    return 0;
+                });
+            },
             currentDataTab() {
                 return this.dataTabs.find(t => t.name === this.activeDataTab);
             },
@@ -762,6 +795,10 @@
                 this.currentDbId = db.id;
                 this.currentDbName = db.name;
                 this.loadSchemas();
+            },
+            selectSchema(schemaName) {
+                this.currentSchema = schemaName;
+                this.loadTables();
             },
             switchDb() {
                 this.currentDbId = null;

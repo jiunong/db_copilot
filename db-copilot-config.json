@@ -1,0 +1,43 @@
+[ {
+  "id" : "LocalOracle",
+  "name" : "LocalOracle",
+  "url" : "jdbc:oracle:thin:@//localhost:1521/ORCL",
+  "username" : "DMISLN_WIND",
+  "password" : "DMISLN_WIND",
+  "driverClassName" : "oracle.jdbc.OracleDriver"
+}, {
+  "id" : "FaceAllOracle",
+  "name" : "FaceAllOracle",
+  "url" : "jdbc:oracle:thin:@//192.168.0.125:1521/ORCL",
+  "username" : "system",
+  "password" : "Oracle@123",
+  "driverClassName" : "oracle.jdbc.OracleDriver"
+}, {
+  "id" : "DM8",
+  "name" : "调控云DM8",
+  "url" : "jdbc:dm://10.21.27.203:6003?schema=JSS_DB_JXJH&compatibleMode=oracle",
+  "username" : "JSS_DB",
+  "password" : "JSS_DB.2022",
+  "driverClassName" : "dm.jdbc.driver.DmDriver"
+}, {
+  "id" : "LocalMySql",
+  "name" : "Local MySQL",
+  "url" : "jdbc:mysql://localhost:3306/mysql?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true",
+  "username" : "root",
+  "password" : "Data.2020",
+  "driverClassName" : "com.mysql.cj.jdbc.Driver"
+}, {
+  "id" : "ORACLE-218",
+  "name" : "ORACLE-218",
+  "url" : "jdbc:oracle:thin:@//10.21.14.218:1521/ORCL",
+  "username" : "DMISLN_WIND",
+  "password" : "DMISLN_WIND",
+  "driverClassName" : "oracle.jdbc.OracleDriver"
+}, {
+  "id" : "大模型笔记本oracle",
+  "name" : "大模型笔记本oracle",
+  "url" : "jdbc:oracle:thin:@//192.168.1.2:1521/ORCL",
+  "username" : "system",
+  "password" : "system",
+  "driverClassName" : "oracle.jdbc.OracleDriver"
+} ]

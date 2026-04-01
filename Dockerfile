@@ -1,23 +1,40 @@
-# 使用 JDK 1.8 作为基础镜像
-FROM openjdk:8-jdk-alpine
-
-# Set Timezone
-RUN apk add --no-cache tzdata && \
-    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-    echo "Asia/Shanghai" > /etc/timezone && \
-    apk del tzdata
+# 使用 JDK 17 作为基础镜像
+FROM hzkjhub/java17:17.0.4
 
 # 设置工作目录
 WORKDIR /app
 
-# 创建配置和数据目录
-RUN mkdir -p /app/config && mkdir -p /app/logs
+# 创建配置和日志目录
+RUN mkdir -p /app/config /app/logs
 
 # 复制 jar 包到容器中
 COPY target/db_copilot-0.0.1-SNAPSHOT.jar /app/app.jar
 
-# 复制默认配置文件到容器中 (可选，如果想保留默认值)
-COPY src/main/resources/application.yml /app/config/application.yml
+# 复制默认配置模板（避免被挂载卷直接覆盖）
+COPY src/main/resources/application.yml /app/application.yml.template
+
+# 写入启动脚本：在容器启动时初始化配置文件
+RUN cat > /app/entrypoint.sh <<'EOF'
+#!/bin/sh
+set -e
+
+mkdir -p /app/config /app/logs
+
+if [ ! -f /app/config/application.yml ]; then
+	cp /app/application.yml.template /app/config/application.yml
+fi
+
+if [ ! -f /app/config/db-copilot-config.json ]; then
+	echo "[]" > /app/config/db-copilot-config.json
+fi
+
+exec java $JAVA_OPTS \
+	-Djava.security.egd=file:/dev/./urandom \
+	-Dspring.config.location=/app/config/application.yml \
+	-jar /app/app.jar
+EOF
+
+RUN chmod +x /app/entrypoint.sh
 
 # 暴露应用端口
 EXPOSE 18080
@@ -29,4 +46,4 @@ VOLUME ["/app/config", "/app/logs"]
 ENV JAVA_OPTS="-Xms512m -Xmx1024m"
 
 # 启动应用
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Djava.security.egd=file:/dev/./urandom -Dspring.config.location=/app/config/application.yml -jar /app/app.jar"]
+ENTRYPOINT ["/app/entrypoint.sh"]

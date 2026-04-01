@@ -1,6 +1,6 @@
 # 应用服务 WEB 访问端口
 server:
-  port: 18080
+  port: 1808
 
 # 数据库连接配置
 custom:

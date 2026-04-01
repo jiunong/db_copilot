@@ -1,0 +1,11 @@
+[
+  {
+    "id": "LocalMySql",
+    "name": "Local MySQL",
+    "url": "jdbc:mysql://localhost:3306/mysql?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true",
+    "username": "root",
+    "password": "password",
+    "driverClassName": "com.mysql.cj.jdbc.Driver",
+    "_note": "For Docker containers: use 'host.docker.internal' (Docker Desktop), '172.17.0.1' (Linux Docker bridge), or use --network host mode"
+  }
+]

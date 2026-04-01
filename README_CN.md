@@ -22,65 +22,103 @@
 - **前端**：Vue.js 2, Element UI, Axios
 - **数据库**：Oracle, MySQL, 达梦 (Dameng)
 
-## 快速开始
+## 部署
 
-### 环境要求
+### 1. 本地构建打包
 
-- JDK 1.8
-- Maven 3.x
+使用 Maven 打包应用：
 
-### 配置
-
-在 `src/main/resources/application.yml` 文件中配置数据库连接。
-
-```yaml
-server:
-  port: 18080
-
-custom:
-  datasource:
-    list:
-      - id: LocalOracle
-        name: 本地 Oracle
-        url: jdbc:oracle:thin:@//localhost:1521/ORCL
-        username: scott
-        password: tiger
-        driver-class-name: oracle.jdbc.OracleDriver
-      
-      - id: LocalMySQL
-        name: 本地 MySQL
-        url: jdbc:mysql://localhost:3306/test?useUnicode=true&characterEncoding=utf-8&useSSL=false
-        username: root
-        password: password
-        driver-class-name: com.mysql.cj.jdbc.Driver
-      
-      - id: DM8
-        name: 达梦数据库
-        url: jdbc:dm://localhost:5236
-        username: SYSDBA
-        password: SYSDBA
-        driver-class-name: dm.jdbc.driver.DmDriver
+```bash
+mvn clean package -DskipTests
 ```
 
-### 构建与运行
+这将在 `target/` 目录下生成 `db_copilot-0.0.1-SNAPSHOT.jar`。
 
-1. **构建项目：**
-   ```bash
-   mvn clean package
+### 2. 使用 Docker 部署到 Linux 服务器
+
+#### 步骤 1：上传项目文件
+
+在服务器上创建一个目录（例如 `/opt/db-copilot`）并上传以下文件：
+1. 项目源码（至少包含 `Dockerfile`、`src/main/resources/application.yml`）
+2. `target/db_copilot-0.0.1-SNAPSHOT.jar`
+
+#### 步骤 2：构建 Docker 镜像
+
+在上传文件的目录下运行以下命令：
+
+```bash
+docker build -t db-copilot:v1 .
+```
+
+#### 步骤 3：准备数据目录
+
+创建用于持久化配置（数据库连接）和日志的目录：
+
+```bash
+mkdir -p /opt/db-copilot/config
+mkdir -p /opt/db-copilot/logs
+```
+
+#### 步骤 4：运行容器
+
+运行应用并映射配置目录，以持久化保存您的数据库设置：
+
+```bash
+docker run -d \
+  --name db-copilot \
+  -p 18080:18080 \
+  --add-host=host.docker.internal:host-gateway \
+  -v /opt/db-copilot/config:/app/config \
+  -v /opt/db-copilot/logs:/app/logs \
+  -e JAVA_OPTS="-Xms512m -Xmx1024m" \
+  db-copilot:v1
+```
+
+- 访问应用：`http://<您的服务器IP>:18080`
+- 数据库配置将保存在 `/opt/db-copilot/config/db-copilot-config.json`。
+- 日志文件将保存在 `/opt/db-copilot/logs`。
+- 首次启动时若 `/opt/db-copilot/config/application.yml` 不存在，容器会自动生成默认配置文件。
+
+### 3. 关键说明：容器如何连接宿主机数据库
+
+如果数据库部署在宿主机上，**不要在 JDBC URL 中使用 `localhost` 或 `127.0.0.1`**。
+
+原因：容器内的 `localhost` 指向容器自身，而不是宿主机。
+
+请改为以下方式之一：
+
+1. 推荐：使用 `host.docker.internal`
+
+   - MySQL 示例：
+
+   ```text
+   jdbc:mysql://host.docker.internal:3306/mysql?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
    ```
 
-2. **运行应用：**
-   ```bash
-   java -jar target/db_copilot-0.0.1-SNAPSHOT.jar
-   ```
-   或者直接使用 Maven 运行：
-   ```bash
-   mvn spring-boot:run
+   - Oracle 示例：
+
+   ```text
+   jdbc:oracle:thin:@//host.docker.internal:1521/ORCL
    ```
 
-3. **访问 Web 界面：**
-   打开浏览器并访问：
-   [http://localhost:18080](http://localhost:18080)
+2. 备选：直接使用宿主机实际 IP（如 `192.168.x.x`）
+
+> 说明：
+> - 在 Docker Desktop（Windows/macOS）中，`host.docker.internal` 通常可直接使用。
+> - 在 Linux Docker 中，建议在 `docker run` 中增加：
+>   `--add-host=host.docker.internal:host-gateway`
+>   本文示例已包含该参数。
+
+### 4. docker-compose 部署（可选）
+
+如果你使用 `docker-compose.yml`，建议补充 `extra_hosts`，保证 Linux 下也能解析宿主机地址：
+
+```yaml
+services:
+  db-copilot:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
 
 ## 开源协议
 
